@@ -45,30 +45,30 @@ describe('兑换', () => {
     migrate(sqlite)
     db = d1Shim(sqlite) as unknown as D1Database
     for (const id of ['u1', 'u2', 'u3']) {
-      sqlite.prepare('INSERT INTO users (id, email, credits, created_at) VALUES (?, ?, 0, ?)').run(id, `${id}@example.com`, iso(0))
+      sqlite.prepare('INSERT INTO arv_users (id, email, credits, created_at) VALUES (?, ?, 0, ?)').run(id, `${id}@example.com`, iso(0))
     }
   })
 
   function addCode(code: string, extra: { credits?: number; maxUses?: number; validDays?: number | null; expiresAt?: string | null; disabled?: boolean } = {}) {
     sqlite
       .prepare(
-        `INSERT INTO redeem_codes (code, batch_id, credits, max_uses, credit_valid_days, expires_at, note, disabled_at, created_by, created_at)
+        `INSERT INTO arv_redeem_codes (code, batch_id, credits, max_uses, credit_valid_days, expires_at, note, disabled_at, created_by, created_at)
          VALUES (?, 'rdb_1', ?, ?, ?, ?, 'test', ?, 'admin', ?)`,
       )
       .run(code, extra.credits ?? 10, extra.maxUses ?? 1, extra.validDays ?? null, extra.expiresAt ?? null, extra.disabled ? iso(0) : null, iso(0))
   }
 
-  const usedCount = (code: string) => (sqlite.prepare('SELECT used_count AS n FROM redeem_codes WHERE code = ?').get(code) as { n: number }).n
-  const balance = (userId: string) => (sqlite.prepare('SELECT credits FROM users WHERE id = ?').get(userId) as { credits: number }).credits
+  const usedCount = (code: string) => (sqlite.prepare('SELECT used_count AS n FROM arv_redeem_codes WHERE code = ?').get(code) as { n: number }).n
+  const balance = (userId: string) => (sqlite.prepare('SELECT credits FROM arv_users WHERE id = ?').get(userId) as { credits: number }).credits
   const grants = (userId: string) =>
-    sqlite.prepare('SELECT source, ref_id AS refId, amount, remaining, expires_at AS expiresAt FROM credit_grants WHERE user_id = ?').all(userId) as Array<{
+    sqlite.prepare('SELECT source, ref_id AS refId, amount, remaining, expires_at AS expiresAt FROM arv_credit_grants WHERE user_id = ?').all(userId) as Array<{
       source: string
       refId: string
       amount: number
       remaining: number
       expiresAt: string | null
     }>
-  const ledger = (userId: string) => sqlite.prepare('SELECT reason, delta, ref_id AS refId FROM credit_ledger WHERE user_id = ?').all(userId)
+  const ledger = (userId: string) => sqlite.prepare('SELECT reason, delta, ref_id AS refId FROM arv_credit_ledger WHERE user_id = ?').all(userId)
 
   async function rejected(promise: Promise<unknown>) {
     const error = await promise.then(
@@ -143,9 +143,9 @@ describe('兑换', () => {
   it('预检查之后码被停用：兑换失败且不留下兑换记录', async () => {
     addCode('LAUNCH2026', { maxUses: 100 })
     const pending = redeemCode(db, 'u1', 'LAUNCH2026')
-    sqlite.prepare('UPDATE redeem_codes SET disabled_at = ? WHERE code = ?').run(iso(0), 'LAUNCH2026')
+    sqlite.prepare('UPDATE arv_redeem_codes SET disabled_at = ? WHERE code = ?').run(iso(0), 'LAUNCH2026')
     expect(await rejected(pending)).toEqual({ status: 400, code: 'invalid_code' })
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM redeem_uses').get()).toEqual({ n: 0 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM arv_redeem_uses').get()).toEqual({ n: 0 })
     expect(balance('u1')).toBe(0)
   })
 })

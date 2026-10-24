@@ -131,7 +131,7 @@ async function enqueueEmails(env: Env, emails: OutgoingEmail[]) {
     rows.map((email) =>
       db
         .prepare(
-          `INSERT INTO email_outbox (id, dedupe_key, template, to_email, user_id, locale, params, status, last_error, next_attempt_at, created_at)
+          `INSERT INTO arv_email_outbox (id, dedupe_key, template, to_email, user_id, locale, params, status, last_error, next_attempt_at, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (dedupe_key) DO NOTHING`,
         )
         .bind(
@@ -157,7 +157,7 @@ export async function deliverEmail(env: Env, id: string) {
   if (!config) return null
   const now = Date.now()
   const row = await env.DB.prepare(
-    `UPDATE email_outbox SET attempts = attempts + 1, next_attempt_at = ?
+    `UPDATE arv_email_outbox SET attempts = attempts + 1, next_attempt_at = ?
      WHERE id = ? AND status = 'pending' AND next_attempt_at <= ? RETURNING *`,
   )
     .bind(new Date(now + LEASE_MS).toISOString(), id, new Date(now).toISOString())
@@ -166,14 +166,14 @@ export async function deliverEmail(env: Env, id: string) {
   const result = await attemptDelivery(row, config, now)
   if (result.status === 'sent') {
     await env.DB.prepare(
-      `UPDATE email_outbox SET status = 'sent', subject = ?, provider_message_id = ?, last_error = NULL, sent_at = ? WHERE id = ?`,
+      `UPDATE arv_email_outbox SET status = 'sent', subject = ?, provider_message_id = ?, last_error = NULL, sent_at = ? WHERE id = ?`,
     )
       .bind(result.subject, result.messageId, nowIso(), id)
       .run()
   } else {
     if (result.status === 'failed') console.error('email failed', row.template, id, result.error)
     await env.DB.prepare(
-      `UPDATE email_outbox SET status = ?, subject = COALESCE(?, subject), last_error = ?, next_attempt_at = COALESCE(?, next_attempt_at)
+      `UPDATE arv_email_outbox SET status = ?, subject = COALESCE(?, subject), last_error = ?, next_attempt_at = COALESCE(?, next_attempt_at)
        WHERE id = ?`,
     )
       .bind(result.status, result.subject, result.error, result.retryAt, id)
@@ -185,7 +185,7 @@ export async function deliverEmail(env: Env, id: string) {
 // Cron：补发到期的 pending，删除超过保留期的记录（含收件地址，属于个人数据）
 export async function runEmailMaintenance(env: Env) {
   const due = await env.DB.prepare(
-    `SELECT id FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY next_attempt_at LIMIT ${RETRY_BATCH}`,
+    `SELECT id FROM arv_email_outbox WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY next_attempt_at LIMIT ${RETRY_BATCH}`,
   )
     .bind(nowIso())
     .all<{ id: string }>()
@@ -196,7 +196,7 @@ export async function runEmailMaintenance(env: Env) {
       console.error('email retry failed', id, error)
     }
   }
-  await env.DB.prepare('DELETE FROM email_outbox WHERE created_at < ?')
+  await env.DB.prepare('DELETE FROM arv_email_outbox WHERE created_at < ?')
     .bind(new Date(Date.now() - OUTBOX_RETENTION_DAYS * 86400_000).toISOString())
     .run()
   return { retried: due.results.length }
@@ -205,7 +205,7 @@ export async function runEmailMaintenance(env: Env) {
 // 后台手动重试 failed / skipped（例如配置好发件域名之后）
 export async function retryEmail(env: Env, id: string) {
   const reset = await env.DB.prepare(
-    `UPDATE email_outbox SET status = 'pending', attempts = 0, last_error = NULL, next_attempt_at = ?
+    `UPDATE arv_email_outbox SET status = 'pending', attempts = 0, last_error = NULL, next_attempt_at = ?
      WHERE id = ? AND status IN ('failed', 'skipped')`,
   )
     .bind(nowIso(), id)

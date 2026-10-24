@@ -44,7 +44,7 @@ export async function audit(
   detail?: unknown,
 ) {
   await env.DB.prepare(
-    `INSERT INTO admin_audit (id, admin_user_id, action, target_type, target_id, detail, created_at)
+    `INSERT INTO arv_admin_audit (id, admin_user_id, action, target_type, target_id, detail, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(createId('aud'), admin.id, action, targetType, targetId, detail === undefined ? null : JSON.stringify(detail), nowIso())

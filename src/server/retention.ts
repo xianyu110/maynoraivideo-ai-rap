@@ -19,8 +19,8 @@ export async function sweepExpiredMedia(env: Env, options: SweepOptions = {}) {
   if (site.retention.uploadDays > 0) {
     const cutoff = new Date(now - site.retention.uploadDays * DAY_MS).toISOString()
     const rows = await env.DB.prepare(
-      `SELECT id, r2_key FROM uploads u WHERE expired_at IS NULL AND created_at < ? ${userFilter}
-       AND NOT EXISTS (SELECT 1 FROM generations g WHERE g.upload_id = u.id AND g.status IN ('queued', 'processing'))
+      `SELECT id, r2_key FROM arv_uploads u WHERE expired_at IS NULL AND created_at < ? ${userFilter}
+       AND NOT EXISTS (SELECT 1 FROM arv_generations g WHERE g.upload_id = u.id AND g.status IN ('queued', 'processing'))
        LIMIT ${BATCH}`,
     )
       .bind(cutoff, ...userParams)
@@ -28,7 +28,7 @@ export async function sweepExpiredMedia(env: Env, options: SweepOptions = {}) {
     if (rows.results.length) {
       await env.MEDIA.delete(rows.results.map((r) => r.r2_key))
       const ids = rows.results.map((r) => r.id)
-      await env.DB.prepare(`UPDATE uploads SET expired_at = ? WHERE id IN (${ids.map(() => '?').join(',')})`)
+      await env.DB.prepare(`UPDATE arv_uploads SET expired_at = ? WHERE id IN (${ids.map(() => '?').join(',')})`)
         .bind(stamp, ...ids)
         .run()
       uploads = ids.length
@@ -38,7 +38,7 @@ export async function sweepExpiredMedia(env: Env, options: SweepOptions = {}) {
   if (site.retention.outputDays > 0) {
     const cutoff = new Date(now - site.retention.outputDays * DAY_MS).toISOString()
     const rows = await env.DB.prepare(
-      `SELECT id, output_r2_key, share_poster_key FROM generations WHERE status = 'succeeded' AND output_r2_key IS NOT NULL AND completed_at < ? ${userFilter}
+      `SELECT id, output_r2_key, share_poster_key FROM arv_generations WHERE status = 'succeeded' AND output_r2_key IS NOT NULL AND completed_at < ? ${userFilter}
        LIMIT ${BATCH}`,
     )
       .bind(cutoff, ...userParams)
@@ -48,7 +48,7 @@ export async function sweepExpiredMedia(env: Env, options: SweepOptions = {}) {
       await env.MEDIA.delete(rows.results.flatMap((r) => (r.share_poster_key ? [r.output_r2_key, r.share_poster_key] : [r.output_r2_key])))
       const ids = rows.results.map((r) => r.id)
       await env.DB.prepare(
-        `UPDATE generations SET output_r2_key = NULL, share_poster_key = NULL, expired_at = ?, updated_at = ? WHERE id IN (${ids.map(() => '?').join(',')})`,
+        `UPDATE arv_generations SET output_r2_key = NULL, share_poster_key = NULL, expired_at = ?, updated_at = ? WHERE id IN (${ids.map(() => '?').join(',')})`,
       )
         .bind(stamp, stamp, ...ids)
         .run()

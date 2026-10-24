@@ -28,7 +28,7 @@ export async function processPaymentEvent(
 ): Promise<FulfillmentResult> {
   const db = env.DB
   const seen = await db
-    .prepare('SELECT status FROM payment_events WHERE provider = ? AND event_id = ?')
+    .prepare('SELECT status FROM arv_payment_events WHERE provider = ? AND event_id = ?')
     .bind(provider, event.eventId)
     .first<{ status: string }>()
   if (seen && seen.status !== 'failed') return { status: 'duplicate', orderId: null }
@@ -83,7 +83,7 @@ async function applyEvent(env: Env, provider: PaymentProviderId, event: PaymentE
       }),
       db
         .prepare(
-          `UPDATE orders SET status = 'paid', paid_at = ?, updated_at = ?,
+          `UPDATE arv_orders SET status = 'paid', paid_at = ?, updated_at = ?,
            provider_order_id = COALESCE(?, provider_order_id), provider_payment_id = COALESCE(?, provider_payment_id),
            paid_amount = ?, paid_currency = ?, paid_amount_cents = ? WHERE id = ?`,
         )
@@ -111,14 +111,14 @@ async function applyEvent(env: Env, provider: PaymentProviderId, event: PaymentE
     if (order.status !== 'paid' && order.status !== 'refunded') {
       // 金额/商品不符没有入账的付款，站长在支付商后台退款后结案：不动积分，只把订单标为已退款
       const unfulfilled = await db
-        .prepare(`SELECT 1 FROM payment_events WHERE order_id = ? AND status = 'mismatch' LIMIT 1`)
+        .prepare(`SELECT 1 FROM arv_payment_events WHERE order_id = ? AND status = 'mismatch' LIMIT 1`)
         .bind(order.id)
         .first()
       if (unfulfilled) {
         const now = nowIso()
         await db
           .prepare(
-            `UPDATE orders SET status = 'refunded', refunded_amount_cents = ?, refunded_at = ?, updated_at = ?
+            `UPDATE arv_orders SET status = 'refunded', refunded_amount_cents = ?, refunded_at = ?, updated_at = ?
              WHERE id = ? AND status NOT IN ('paid', 'refunded')`,
           )
           .bind(event.refundAmountCents ?? event.originalAmountCents ?? 0, now, now, order.id)
@@ -140,7 +140,7 @@ async function applyEvent(env: Env, provider: PaymentProviderId, event: PaymentE
 
   // failed：只把仍在 pending 的订单标记失败
   await db
-    .prepare(`UPDATE orders SET status = 'failed', updated_at = ? WHERE id = ? AND status = 'pending'`)
+    .prepare(`UPDATE arv_orders SET status = 'failed', updated_at = ? WHERE id = ? AND status = 'pending'`)
     .bind(nowIso(), order.id)
     .run()
   return { status: 'processed', orderId: order.id }
@@ -180,7 +180,7 @@ function expectedProductId(env: Env, provider: PaymentProviderId, packageId: str
 async function markMismatch(db: D1Database, orderId: string, event: PaidEvent, now: string) {
   await db
     .prepare(
-      `UPDATE orders SET provider_order_id = COALESCE(?, provider_order_id),
+      `UPDATE arv_orders SET provider_order_id = COALESCE(?, provider_order_id),
        provider_payment_id = COALESCE(?, provider_payment_id), updated_at = ? WHERE id = ?`,
     )
     .bind(event.providerOrderId, event.providerPaymentId, now, orderId)
@@ -189,7 +189,7 @@ async function markMismatch(db: D1Database, orderId: string, event: PaidEvent, n
 
 function findSubscription(db: D1Database, provider: PaymentProviderId, providerSubscriptionId: string) {
   return db
-    .prepare('SELECT * FROM subscriptions WHERE provider = ? AND provider_subscription_id = ?')
+    .prepare('SELECT * FROM arv_subscriptions WHERE provider = ? AND provider_subscription_id = ?')
     .bind(provider, providerSubscriptionId)
     .first<SubscriptionRow>()
 }
@@ -206,7 +206,7 @@ async function applySubscriptionPayment(
   const sub = await findSubscription(db, provider, charge.providerSubscriptionId)
   if (event.providerPaymentId) {
     const paid = await db
-      .prepare(`SELECT id FROM orders WHERE provider = ? AND provider_payment_id = ? AND status IN ('paid', 'refunded')`)
+      .prepare(`SELECT id FROM arv_orders WHERE provider = ? AND provider_payment_id = ? AND status IN ('paid', 'refunded')`)
       .bind(provider, event.providerPaymentId)
       .first<{ id: string }>()
     if (paid) return { status: 'duplicate', orderId: paid.id }
@@ -255,7 +255,7 @@ async function applySubscriptionStart(
     }),
     db
       .prepare(
-        `INSERT INTO subscriptions (id, user_id, provider, provider_subscription_id, provider_customer_id, plan_id, interval,
+        `INSERT INTO arv_subscriptions (id, user_id, provider, provider_subscription_id, provider_customer_id, plan_id, interval,
          credits_per_month, amount_cents, currency, status, cancel_at_period_end, current_period_start, current_period_end,
          current_order_id, grants_done, next_grant_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, ?, ?, ?, 1, ?, ?, ?)`,
@@ -280,7 +280,7 @@ async function applySubscriptionStart(
       ),
     db
       .prepare(
-        `UPDATE orders SET status = 'paid', paid_at = ?, updated_at = ?, subscription_id = ?,
+        `UPDATE arv_orders SET status = 'paid', paid_at = ?, updated_at = ?, subscription_id = ?,
          provider_order_id = COALESCE(?, provider_order_id), provider_payment_id = COALESCE(?, provider_payment_id),
          paid_amount = ?, paid_currency = ?, paid_amount_cents = ? WHERE id = ?`,
       )
@@ -334,12 +334,12 @@ async function applySubscriptionRenewal(
   const insertOrder = (status: 'paid' | 'pending') =>
     db
       .prepare(
-        `INSERT INTO orders (id, user_id, provider, package_id, credits, amount_cents, currency, status, provider_order_id,
+        `INSERT INTO arv_orders (id, user_id, provider, package_id, credits, amount_cents, currency, status, provider_order_id,
          provider_payment_id, paid_amount, paid_currency, paid_amount_cents, subscription_id, source, medium, campaign, country,
          device, attribution, created_at, paid_at, updated_at)
          SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, o.source, o.medium, o.campaign, o.country,
          o.device, o.attribution, ?15, ?16, ?15
-         FROM (SELECT 1) LEFT JOIN orders o ON o.id = ?17`,
+         FROM (SELECT 1) LEFT JOIN arv_orders o ON o.id = ?17`,
       )
       .bind(
         orderId,
@@ -382,7 +382,7 @@ async function applySubscriptionRenewal(
       // 续费成功说明没有取消（或已在门户恢复）；逾期补扣成功回到 active，已终止的订阅只补积分不改状态
       db
         .prepare(
-          `UPDATE subscriptions SET current_order_id = ?, current_period_start = ?, current_period_end = ?, grants_done = 1,
+          `UPDATE arv_subscriptions SET current_order_id = ?, current_period_start = ?, current_period_end = ?, grants_done = 1,
            next_grant_at = ?, provider_customer_id = COALESCE(?, provider_customer_id),
            status = CASE WHEN status IN ('active', 'past_due') THEN 'active' ELSE status END,
            cancel_at_period_end = CASE WHEN status IN ('active', 'past_due') THEN 0 ELSE cancel_at_period_end END,
@@ -449,7 +449,7 @@ async function applySubscriptionState(env: Env, provider: PaymentProviderId, eve
   }
   const update = db
     .prepare(
-      `UPDATE subscriptions SET status = ?, cancel_at_period_end = ?, current_period_start = ?, current_period_end = ?,
+      `UPDATE arv_subscriptions SET status = ?, cancel_at_period_end = ?, current_period_start = ?, current_period_end = ?,
        provider_customer_id = ?, plan_id = ?, interval = ?, credits_per_month = ?, amount_cents = ?, currency = ?,
        next_grant_at = ?, ended_at = ?, state_at = COALESCE(?, state_at), updated_at = ?
        WHERE id = ? AND (state_at IS NULL OR ? IS NULL OR state_at <= ?)`,
@@ -507,7 +507,7 @@ export async function refundOrder(db: D1Database, order: OrderRow, refund: Refun
       }),
       db
         .prepare(
-          `UPDATE orders SET refunded_credits = refunded_credits + ?, refunded_amount_cents = refunded_amount_cents + ?,
+          `UPDATE arv_orders SET refunded_credits = refunded_credits + ?, refunded_amount_cents = refunded_amount_cents + ?,
            status = ?, refunded_at = ?, updated_at = ? WHERE id = ? AND status = 'paid'`,
         )
         .bind(plan.credits, plan.amountCents, plan.full ? 'refunded' : 'paid', now, now, order.id),
@@ -573,28 +573,28 @@ async function findOrder(db: D1Database, provider: PaymentProviderId, event: Exc
   // 订阅续费的退款事件里 orderId 仍是首单号（checkout 元数据跟着订阅走），先按支付号找到具体那一期的订单
   if (event.kind === 'refunded' && event.providerPaymentId) {
     const order = await db
-      .prepare('SELECT * FROM orders WHERE provider = ? AND provider_payment_id = ?')
+      .prepare('SELECT * FROM arv_orders WHERE provider = ? AND provider_payment_id = ?')
       .bind(provider, event.providerPaymentId)
       .first<OrderRow>()
     if (order) return order
   }
   if (event.orderId) {
     const order = await db
-      .prepare('SELECT * FROM orders WHERE id = ? AND provider = ?')
+      .prepare('SELECT * FROM arv_orders WHERE id = ? AND provider = ?')
       .bind(event.orderId, provider)
       .first<OrderRow>()
     if (order) return order
   }
   if ('providerPaymentId' in event && event.providerPaymentId) {
     const order = await db
-      .prepare('SELECT * FROM orders WHERE provider = ? AND provider_payment_id = ?')
+      .prepare('SELECT * FROM arv_orders WHERE provider = ? AND provider_payment_id = ?')
       .bind(provider, event.providerPaymentId)
       .first<OrderRow>()
     if (order) return order
   }
   if (event.kind === 'paid' && event.providerOrderId) {
     return db
-      .prepare('SELECT * FROM orders WHERE provider = ? AND (provider_session_id = ? OR provider_order_id = ?)')
+      .prepare('SELECT * FROM arv_orders WHERE provider = ? AND (provider_session_id = ? OR provider_order_id = ?)')
       .bind(provider, event.providerOrderId, event.providerOrderId)
       .first<OrderRow>()
   }
@@ -612,7 +612,7 @@ async function recordEvent(
 ) {
   await db
     .prepare(
-      `INSERT INTO payment_events (id, provider, event_id, event_type, order_id, status, error, payload, created_at)
+      `INSERT INTO arv_payment_events (id, provider, event_id, event_type, order_id, status, error, payload, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (provider, event_id) DO UPDATE SET status = excluded.status, error = excluded.error, order_id = excluded.order_id`,
     )

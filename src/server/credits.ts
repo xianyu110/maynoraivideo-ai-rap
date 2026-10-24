@@ -39,7 +39,7 @@ export function ledgerStatements(db: D1Database, entry: LedgerEntry): D1Prepared
     return [
       db
         .prepare(
-          `INSERT INTO credit_grants (id, user_id, source, ref_id, amount, remaining, expires_at, created_at)
+          `INSERT INTO arv_credit_grants (id, user_id, source, ref_id, amount, remaining, expires_at, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(createId('grt'), entry.userId, entry.reason, entry.refId ?? null, entry.delta, entry.delta, entry.expiresAt ?? null, now),
@@ -52,9 +52,9 @@ export function ledgerStatements(db: D1Database, entry: LedgerEntry): D1Prepared
     ...expireStatements(db, now, entry.userId),
     ...allocateStatements(db, { userId: entry.userId, key: entry.idempotencyKey, amount, now }),
     db
-      .prepare('INSERT INTO credit_guard (ok) SELECT COALESCE(SUM(amount), 0) = ? FROM credit_allocations WHERE ledger_key = ?')
+      .prepare('INSERT INTO arv_credit_guard (ok) SELECT COALESCE(SUM(amount), 0) = ? FROM arv_credit_allocations WHERE ledger_key = ?')
       .bind(amount, entry.idempotencyKey),
-    db.prepare('DELETE FROM credit_guard'),
+    db.prepare('DELETE FROM arv_credit_guard'),
     insertLedger(db, entry, now),
     recomputeBalance(db, entry.userId),
   ]
@@ -81,8 +81,8 @@ export function clawbackStatements(
     }),
     db
       .prepare(
-        `INSERT INTO credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, note, created_at)
-         SELECT ?, ?, -COALESCE(SUM(amount), 0), ?, ?, ?, ?, ? FROM credit_allocations WHERE ledger_key = ?`,
+        `INSERT INTO arv_credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, note, created_at)
+         SELECT ?, ?, -COALESCE(SUM(amount), 0), ?, ?, ?, ?, ? FROM arv_credit_allocations WHERE ledger_key = ?`,
       )
       .bind(createId('led'), entry.userId, entry.reason, entry.refId ?? null, key, entry.note ?? null, now, key),
     recomputeBalance(db, entry.userId),
@@ -93,33 +93,33 @@ export function clawbackStatements(
 // 只在任务处于 failed + refunded 时生效；已经退过时流水的 idempotency_key 冲突，整个 batch 回滚。
 // 本功能上线前扣费的任务没有明细，退成一个永不过期的新批次
 export function generationRefundStatements(db: D1Database, generationId: string, note: string, now = nowIso()): D1PreparedStatement[] {
-  const refundable = `FROM generations WHERE id = ?1 AND status = 'failed' AND refunded = 1`
-  const hasAllocations = `SELECT 1 FROM credit_allocations WHERE ledger_key = 'generation:' || ?1`
+  const refundable = `FROM arv_generations WHERE id = ?1 AND status = 'failed' AND refunded = 1`
+  const hasAllocations = `SELECT 1 FROM arv_credit_allocations WHERE ledger_key = 'generation:' || ?1`
   return [
     db
       .prepare(
-        `INSERT INTO credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, note, created_at)
+        `INSERT INTO arv_credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, note, created_at)
          SELECT 'led_' || lower(hex(randomblob(12))), user_id, credits_cost, 'generation_refund', id, 'generation_refund:' || id, ?2, ?3
          ${refundable}`,
       )
       .bind(generationId, note, now),
     db
       .prepare(
-        `UPDATE credit_grants SET remaining = remaining +
-           (SELECT a.amount FROM credit_allocations a WHERE a.ledger_key = 'generation:' || ?1 AND a.grant_id = credit_grants.id)
-         WHERE id IN (SELECT grant_id FROM credit_allocations WHERE ledger_key = 'generation:' || ?1) AND EXISTS (SELECT 1 ${refundable})`,
+        `UPDATE arv_credit_grants SET remaining = remaining +
+           (SELECT a.amount FROM arv_credit_allocations a WHERE a.ledger_key = 'generation:' || ?1 AND a.grant_id = arv_credit_grants.id)
+         WHERE id IN (SELECT grant_id FROM arv_credit_allocations WHERE ledger_key = 'generation:' || ?1) AND EXISTS (SELECT 1 ${refundable})`,
       )
       .bind(generationId),
     db
       .prepare(
-        `INSERT INTO credit_grants (id, user_id, source, ref_id, amount, remaining, expires_at, created_at)
+        `INSERT INTO arv_credit_grants (id, user_id, source, ref_id, amount, remaining, expires_at, created_at)
          SELECT 'grt_' || lower(hex(randomblob(12))), user_id, 'generation_refund', id, credits_cost, credits_cost, NULL, ?2
          ${refundable} AND credits_cost > 0 AND NOT EXISTS (${hasAllocations})`,
       )
       .bind(generationId, now),
     db
       .prepare(
-        `UPDATE users SET credits = (SELECT COALESCE(SUM(remaining), 0) FROM credit_grants WHERE user_id = users.id)
+        `UPDATE arv_users SET credits = (SELECT COALESCE(SUM(remaining), 0) FROM arv_credit_grants WHERE user_id = arv_users.id)
          WHERE id = (SELECT user_id ${refundable})`,
       )
       .bind(generationId),
@@ -137,10 +137,10 @@ export function alignSubscriptionGrantStatement(
 ): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE credit_grants SET expires_at = ?1
-       WHERE id = (SELECT id FROM credit_grants WHERE source = 'subscription' AND ref_id = ?2 AND remaining > 0 AND expires_at > ?3
+      `UPDATE arv_credit_grants SET expires_at = ?1
+       WHERE id = (SELECT id FROM arv_credit_grants WHERE source = 'subscription' AND ref_id = ?2 AND remaining > 0 AND expires_at > ?3
                    ORDER BY expires_at DESC LIMIT 1)
-         AND EXISTS (SELECT 1 FROM subscriptions WHERE id = ?4 AND current_order_id = ?2 AND current_period_start = ?5 AND current_period_end = ?6)`,
+         AND EXISTS (SELECT 1 FROM arv_subscriptions WHERE id = ?4 AND current_order_id = ?2 AND current_period_start = ?5 AND current_period_end = ?6)`,
     )
     .bind(entry.expiresAt, entry.orderId, now, entry.subscriptionId, entry.periodStart, entry.periodEnd)
 }
@@ -150,18 +150,18 @@ export function expireStatements(db: D1Database, now: string, userId: string | n
   return [
     db
       .prepare(
-        `INSERT INTO credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, note, created_at)
+        `INSERT INTO arv_credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, note, created_at)
          SELECT 'led_' || lower(hex(randomblob(12))), user_id, -remaining, 'expire', id, 'expire:' || id || ':' || ?1, source, ?1
-         FROM credit_grants WHERE ${expiring}`,
+         FROM arv_credit_grants WHERE ${expiring}`,
       )
       .bind(now, userId),
     db
       .prepare(
-        `UPDATE users SET credits = credits - (SELECT SUM(remaining) FROM credit_grants WHERE user_id = users.id AND ${expiring})
-         WHERE id IN (SELECT user_id FROM credit_grants WHERE ${expiring})`,
+        `UPDATE arv_users SET credits = credits - (SELECT SUM(remaining) FROM arv_credit_grants WHERE user_id = arv_users.id AND ${expiring})
+         WHERE id IN (SELECT user_id FROM arv_credit_grants WHERE ${expiring})`,
       )
       .bind(now, userId),
-    db.prepare(`UPDATE credit_grants SET remaining = 0 WHERE ${expiring}`).bind(now, userId),
+    db.prepare(`UPDATE arv_credit_grants SET remaining = 0 WHERE ${expiring}`).bind(now, userId),
   ]
 }
 
@@ -173,22 +173,22 @@ function allocateStatements(
   return [
     db
       .prepare(
-        `INSERT INTO credit_allocations (ledger_key, grant_id, amount)
+        `INSERT INTO arv_credit_allocations (ledger_key, grant_id, amount)
          SELECT ?1, id, MIN(remaining, ?3 - (running - remaining)) FROM (
            SELECT id, remaining, SUM(remaining) OVER (
              ORDER BY CASE WHEN ref_id = ?4 THEN 0 ELSE 1 END, expires_at IS NULL, expires_at, created_at, id
              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
            ) AS running
-           FROM credit_grants WHERE user_id = ?2 AND remaining > 0 AND (expires_at IS NULL OR expires_at > ?5)
+           FROM arv_credit_grants WHERE user_id = ?2 AND remaining > 0 AND (expires_at IS NULL OR expires_at > ?5)
              AND (?6 = 0 OR ref_id = ?4)
          ) WHERE running - remaining < ?3`,
       )
       .bind(input.key, input.userId, input.amount, input.preferRefId ?? null, input.now, input.onlyPreferred ? 1 : 0),
     db
       .prepare(
-        `UPDATE credit_grants SET remaining = remaining -
-           (SELECT a.amount FROM credit_allocations a WHERE a.ledger_key = ?1 AND a.grant_id = credit_grants.id)
-         WHERE id IN (SELECT grant_id FROM credit_allocations WHERE ledger_key = ?1)`,
+        `UPDATE arv_credit_grants SET remaining = remaining -
+           (SELECT a.amount FROM arv_credit_allocations a WHERE a.ledger_key = ?1 AND a.grant_id = arv_credit_grants.id)
+         WHERE id IN (SELECT grant_id FROM arv_credit_allocations WHERE ledger_key = ?1)`,
       )
       .bind(input.key),
   ]
@@ -197,14 +197,14 @@ function allocateStatements(
 function insertLedger(db: D1Database, entry: LedgerEntry, now: string) {
   return db
     .prepare(
-      `INSERT INTO credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, note, created_at)
+      `INSERT INTO arv_credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, note, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(createId('led'), entry.userId, entry.delta, entry.reason, entry.refId ?? null, entry.idempotencyKey, entry.note ?? null, now)
 }
 
 function recomputeBalance(db: D1Database, userId: string) {
-  return db.prepare('UPDATE users SET credits = (SELECT COALESCE(SUM(remaining), 0) FROM credit_grants WHERE user_id = ?1) WHERE id = ?1').bind(userId)
+  return db.prepare('UPDATE arv_users SET credits = (SELECT COALESCE(SUM(remaining), 0) FROM arv_credit_grants WHERE user_id = ?1) WHERE id = ?1').bind(userId)
 }
 
 // 补救失败任务未退积分：正常路径 failGeneration 会原子置 failed+refunded 并写流水；
@@ -216,7 +216,7 @@ export async function repairMissingGenerationRefunds(db: D1Database, limit = 50)
   const now = nowIso()
   const unmarked = await db
     .prepare(
-      `SELECT id FROM generations WHERE status = 'failed' AND refunded = 0 ORDER BY updated_at LIMIT ?`,
+      `SELECT id FROM arv_generations WHERE status = 'failed' AND refunded = 0 ORDER BY updated_at LIMIT ?`,
     )
     .bind(limit)
     .all<{ id: string }>()
@@ -227,7 +227,7 @@ export async function repairMissingGenerationRefunds(db: D1Database, limit = 50)
       await db.batch([
         db
           .prepare(
-            `UPDATE generations SET refunded = 1, updated_at = ? WHERE id = ? AND status = 'failed' AND refunded = 0`,
+            `UPDATE arv_generations SET refunded = 1, updated_at = ? WHERE id = ? AND status = 'failed' AND refunded = 0`,
           )
           .bind(now, row.id),
         ...generationRefundStatements(db, row.id, 'repair_refund', now),
@@ -238,8 +238,8 @@ export async function repairMissingGenerationRefunds(db: D1Database, limit = 50)
       if (error instanceof Error && /UNIQUE constraint failed/i.test(error.message)) {
         const marked = await db
           .prepare(
-            `UPDATE generations SET refunded = 1, updated_at = ? WHERE id = ? AND status = 'failed' AND refunded = 0
-             AND EXISTS (SELECT 1 FROM credit_ledger WHERE idempotency_key = 'generation_refund:' || ?)`,
+            `UPDATE arv_generations SET refunded = 1, updated_at = ? WHERE id = ? AND status = 'failed' AND refunded = 0
+             AND EXISTS (SELECT 1 FROM arv_credit_ledger WHERE idempotency_key = 'generation_refund:' || ?)`,
           )
           .bind(now, row.id, row.id)
           .run()
@@ -252,10 +252,10 @@ export async function repairMissingGenerationRefunds(db: D1Database, limit = 50)
 
   const missingLedger = await db
     .prepare(
-      `SELECT g.id FROM generations g
+      `SELECT g.id FROM arv_generations g
        WHERE g.status = 'failed' AND g.refunded = 1
          AND NOT EXISTS (
-           SELECT 1 FROM credit_ledger l WHERE l.idempotency_key = 'generation_refund:' || g.id
+           SELECT 1 FROM arv_credit_ledger l WHERE l.idempotency_key = 'generation_refund:' || g.id
          )
        ORDER BY g.updated_at LIMIT ?`,
     )

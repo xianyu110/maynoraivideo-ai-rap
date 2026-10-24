@@ -29,7 +29,7 @@ describe('upsertUser：账号以 Google sub 为准', () => {
     locale: null,
     ...extra,
   })
-  const users = () => sqlite.prepare('SELECT id, email, google_sub, credits, status FROM users ORDER BY created_at, id').all()
+  const users = () => sqlite.prepare('SELECT id, email, google_sub, credits, status FROM arv_users ORDER BY created_at, id').all()
   const rejection = (promise: Promise<unknown>) =>
     promise.then(
       () => null,
@@ -62,22 +62,22 @@ describe('upsertUser：账号以 Google sub 为准', () => {
 
   it('封禁的账号拒绝登录', async () => {
     const user = await upsertUser(env, profile('a@example.com', 'sub-1'))
-    sqlite.prepare(`UPDATE users SET status = 'banned' WHERE id = ?`).run(user.id)
+    sqlite.prepare(`UPDATE arv_users SET status = 'banned' WHERE id = ?`).run(user.id)
     expect(await rejection(upsertUser(env, profile('a@example.com', 'sub-1')))).toEqual([403, 'account_disabled'])
   })
 
   it('注销过的邮箱重新注册：不发注册赠送、不绑定邀请人；别的邮箱照常发', async () => {
-    sqlite.prepare(`INSERT INTO users (id, email, credits, referral_code, status, created_at) VALUES ('usr_inviter', 'inv@example.com', 0, 'INVITER2', 'active', ?)`).run(new Date().toISOString())
-    sqlite.prepare('INSERT INTO deleted_accounts (email_hash, deleted_at) VALUES (?, ?)').run(await deletedEmailHash(env, ' Gone@Example.com '), new Date().toISOString())
+    sqlite.prepare(`INSERT INTO arv_users (id, email, credits, referral_code, status, created_at) VALUES ('usr_inviter', 'inv@example.com', 0, 'INVITER2', 'active', ?)`).run(new Date().toISOString())
+    sqlite.prepare('INSERT INTO arv_deleted_accounts (email_hash, deleted_at) VALUES (?, ?)').run(await deletedEmailHash(env, ' Gone@Example.com '), new Date().toISOString())
 
     const back = await upsertUser(env, profile('gone@example.com', 'sub-new', { referral: { code: 'INVITER2', ipHash: null } }))
     expect(back.credits).toBe(0)
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM credit_ledger WHERE user_id = ?').get(back.id)).toEqual({ n: 0 })
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM referrals WHERE invitee_id = ?').get(back.id)).toEqual({ n: 0 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM arv_credit_ledger WHERE user_id = ?').get(back.id)).toEqual({ n: 0 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM arv_referrals WHERE invitee_id = ?').get(back.id)).toEqual({ n: 0 })
 
     const fresh = await upsertUser(env, profile('fresh@example.com', 'sub-fresh', { referral: { code: 'INVITER2', ipHash: null } }))
     expect(fresh.credits).toBe(5)
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM referrals WHERE invitee_id = ?').get(fresh.id)).toEqual({ n: 1 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM arv_referrals WHERE invitee_id = ?').get(fresh.id)).toEqual({ n: 1 })
   })
 
   it('邮箱哈希加了盐：换 SESSION_SECRET 后对不上', async () => {

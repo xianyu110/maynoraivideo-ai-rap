@@ -50,13 +50,13 @@ describe('邀请奖励', () => {
   })
 
   const run = (statements: D1PreparedStatement[]) => db.batch(statements as unknown as Stmt[] as unknown as D1PreparedStatement[])
-  const credits = (id: string) => (sqlite.prepare('SELECT credits FROM users WHERE id = ?').get(id) as { credits: number }).credits
+  const credits = (id: string) => (sqlite.prepare('SELECT credits FROM arv_users WHERE id = ?').get(id) as { credits: number }).credits
   const referral = (invitee: string) =>
-    sqlite.prepare('SELECT status, reject_reason, reward_order_id, reward_credits FROM referrals WHERE invitee_id = ?').get(invitee) as
+    sqlite.prepare('SELECT status, reject_reason, reward_order_id, reward_credits FROM arv_referrals WHERE invitee_id = ?').get(invitee) as
       | { status: string; reject_reason: string | null; reward_order_id: string | null; reward_credits: number | null }
       | undefined
   const ledger = (id: string) =>
-    (sqlite.prepare('SELECT reason, delta, ref_id FROM credit_ledger WHERE user_id = ? ORDER BY rowid').all(id) as Array<{
+    (sqlite.prepare('SELECT reason, delta, ref_id FROM arv_credit_ledger WHERE user_id = ? ORDER BY rowid').all(id) as Array<{
       reason: string
       delta: number
       ref_id: string | null
@@ -64,7 +64,7 @@ describe('邀请奖励', () => {
 
   function addUser(id: string, code: string | null = null, status = 'active') {
     sqlite
-      .prepare('INSERT INTO users (id, email, credits, referral_code, status, created_at) VALUES (?, ?, 0, ?, ?, ?)')
+      .prepare('INSERT INTO arv_users (id, email, credits, referral_code, status, created_at) VALUES (?, ?, 0, ?, ?, ?)')
       .run(id, `${id}@example.com`, code, status, iso())
   }
 
@@ -78,7 +78,7 @@ describe('邀请奖励', () => {
     const id = `ord_${++seq}`
     sqlite
       .prepare(
-        `INSERT INTO orders (id, user_id, provider, package_id, credits, amount_cents, currency, status, created_at, updated_at)
+        `INSERT INTO arv_orders (id, user_id, provider, package_id, credits, amount_cents, currency, status, created_at, updated_at)
          VALUES (?, ?, 'mock', 'starter', ?, ?, 'USD', 'pending', ?, ?)`,
       )
       .run(id, userId, orderCredits, amountCents, iso(), iso())
@@ -99,8 +99,8 @@ describe('邀请奖励', () => {
   const pay = (orderId: string, eventId?: string) => processPaymentEvent({ DB: db, KV: kv } as unknown as Env, 'mock', paid(orderId, eventId), '{}')
   // 后台运营参数：直接写 settings 表（KV 里还没有缓存时从 D1 读）
   const setting = (key: string, value: unknown) =>
-    sqlite.prepare('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)').run(key, JSON.stringify(value), iso())
-  const order = (id: string) => sqlite.prepare('SELECT * FROM orders WHERE id = ?').get(id) as unknown as OrderRow
+    sqlite.prepare('INSERT INTO arv_settings (key, value, updated_at) VALUES (?, ?, ?)').run(key, JSON.stringify(value), iso())
+  const order = (id: string) => sqlite.prepare('SELECT * FROM arv_orders WHERE id = ?').get(id) as unknown as OrderRow
 
   it('绑定：邀请码不存在或邀请人不可用时不绑定；同一 IP 超过上限的记为 rejected，不知道 IP 时不限', async () => {
     await signup('nobody', 'NOSUCH22')
@@ -149,7 +149,7 @@ describe('邀请奖励', () => {
 
   it('邀请人 30 天内的奖励达到上限、或付款时邀请人已不可用：标记 rejected，不发；30 天前的不计入', async () => {
     const insert = sqlite.prepare(
-      `INSERT INTO referrals (invitee_id, inviter_id, status, reward_order_id, reward_credits, rewarded_at, created_at)
+      `INSERT INTO arv_referrals (invitee_id, inviter_id, status, reward_order_id, reward_credits, rewarded_at, created_at)
        VALUES (?, 'inviter', ?, ?, ?, ?, ?)`,
     )
     for (let i = 0; i < site.referralMonthlyCap; i++) {
@@ -168,7 +168,7 @@ describe('邀请奖励', () => {
 
     addUser('gone', 'GONEGONE')
     await signup('orphan', 'GONEGONE')
-    sqlite.prepare(`UPDATE users SET status = 'deleted' WHERE id = 'gone'`).run()
+    sqlite.prepare(`UPDATE arv_users SET status = 'deleted' WHERE id = 'gone'`).run()
     await pay(addOrder('orphan'))
     expect(referral('orphan')).toMatchObject({ status: 'rejected', reject_reason: 'inviter_inactive' })
     expect(credits('gone')).toBe(0)
@@ -182,13 +182,13 @@ describe('邀请奖励', () => {
     expect(referral('friend')).toMatchObject({ status: 'rewarded', reward_credits: 25 })
 
     kv.store.clear()
-    sqlite.prepare(`UPDATE settings SET value = '0' WHERE key = 'referralRewardCredits'`).run()
+    sqlite.prepare(`UPDATE arv_settings SET value = '0' WHERE key = 'referralRewardCredits'`).run()
     await signup('late')
     await pay(addOrder('late'))
     expect(referral('late')).toMatchObject({ status: 'rejected', reject_reason: 'paused' })
 
     kv.store.clear()
-    sqlite.prepare(`DELETE FROM settings`).run()
+    sqlite.prepare(`DELETE FROM arv_settings`).run()
     await pay(addOrder('late'))
     expect(referral('late')?.status).toBe('rejected')
     expect(credits('inviter')).toBe(25)

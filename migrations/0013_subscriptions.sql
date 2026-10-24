@@ -1,8 +1,8 @@
 -- 订阅：每次扣款（首付和续费）各是一张订单，入账、退款、报表、邀请奖励沿用订单逻辑；这里记订阅本身的状态。
--- 年付按月发积分：next_grant_at 到了由 Cron 给当期订单补发一个月，orders.credits 累加为“这张订单已发放的积分”
-CREATE TABLE subscriptions (
+-- 年付按月发积分：next_grant_at 到了由 Cron 给当期订单补发一个月，arv_orders.credits 累加为“这张订单已发放的积分”
+CREATE TABLE arv_subscriptions (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id),
+  user_id TEXT NOT NULL REFERENCES arv_users(id),
   provider TEXT NOT NULL, -- waffo | dodo | mock
   provider_subscription_id TEXT NOT NULL, -- Dodo subscription_id；Waffo 订阅订单号 ORD_
   provider_customer_id TEXT, -- Dodo customer_id（客户门户用）
@@ -24,8 +24,8 @@ CREATE TABLE subscriptions (
   ended_at TEXT,
   UNIQUE (provider, provider_subscription_id)
 );
-CREATE INDEX idx_subscriptions_user ON subscriptions(user_id, status);
-CREATE INDEX idx_subscriptions_grant ON subscriptions(next_grant_at) WHERE next_grant_at IS NOT NULL;
+CREATE INDEX arv_idx_subscriptions_user ON arv_subscriptions(user_id, status);
+CREATE INDEX arv_idx_subscriptions_grant ON arv_subscriptions(next_grant_at) WHERE next_grant_at IS NOT NULL;
 
-ALTER TABLE orders ADD COLUMN subscription_id TEXT;
-CREATE INDEX idx_orders_subscription ON orders(subscription_id, created_at);
+ALTER TABLE arv_orders ADD COLUMN subscription_id TEXT;
+CREATE INDEX arv_idx_orders_subscription ON arv_orders(subscription_id, created_at);

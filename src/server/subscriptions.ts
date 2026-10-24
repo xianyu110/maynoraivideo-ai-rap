@@ -47,14 +47,14 @@ export const LIVE_SUBSCRIPTION_SQL = `status IN ('active', 'past_due') AND NOT (
 
 export function liveSubscription(db: D1Database, userId: string, now = nowIso()) {
   return db
-    .prepare(`SELECT * FROM subscriptions WHERE user_id = ? AND ${LIVE_SUBSCRIPTION_SQL} ORDER BY created_at DESC LIMIT 1`)
+    .prepare(`SELECT * FROM arv_subscriptions WHERE user_id = ? AND ${LIVE_SUBSCRIPTION_SQL} ORDER BY created_at DESC LIMIT 1`)
     .bind(userId, now)
     .first<SubscriptionRow>()
 }
 
 export function latestSubscription(db: D1Database, userId: string) {
   return db
-    .prepare('SELECT * FROM subscriptions WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1')
+    .prepare('SELECT * FROM arv_subscriptions WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1')
     .bind(userId)
     .first<SubscriptionRow>()
 }
@@ -101,7 +101,7 @@ export async function setCancelAtPeriodEnd(env: Env, user: UserRow, cancel: bool
   if (!provider || !action) throw new ApiError(409, cancel ? 'subscription_cancel_unsupported' : 'subscription_resume_in_portal')
   await action.call(provider, subscriptionRef(sub, user))
   const now = nowIso()
-  await env.DB.prepare('UPDATE subscriptions SET cancel_at_period_end = ?, state_at = ?, updated_at = ? WHERE id = ?')
+  await env.DB.prepare('UPDATE arv_subscriptions SET cancel_at_period_end = ?, state_at = ?, updated_at = ? WHERE id = ?')
     .bind(cancel ? 1 : 0, now, now, sub.id)
     .run()
   return { ...sub, cancel_at_period_end: cancel ? 1 : 0, state_at: now, updated_at: now }
@@ -122,7 +122,7 @@ export async function grantDueSubscriptions(env: Env, options: { now?: number; u
   const now = new Date(nowMs).toISOString()
   const rows = await db
     .prepare(
-      `SELECT s.*, o.status AS order_status FROM subscriptions s LEFT JOIN orders o ON o.id = s.current_order_id
+      `SELECT s.*, o.status AS order_status FROM arv_subscriptions s LEFT JOIN arv_orders o ON o.id = s.current_order_id
        WHERE s.next_grant_at IS NOT NULL AND s.next_grant_at <= ? AND (? IS NULL OR s.user_id = ?)
        ORDER BY s.next_grant_at LIMIT 50`,
     )
@@ -131,7 +131,7 @@ export async function grantDueSubscriptions(env: Env, options: { now?: number; u
   let granted = 0
   for (const sub of rows.results) {
     if (sub.status !== 'active' || sub.order_status !== 'paid' || !sub.current_order_id || !sub.current_period_start || !sub.current_period_end) {
-      await db.prepare('UPDATE subscriptions SET next_grant_at = NULL, updated_at = ? WHERE id = ? AND grants_done = ?')
+      await db.prepare('UPDATE arv_subscriptions SET next_grant_at = NULL, updated_at = ? WHERE id = ? AND grants_done = ?')
         .bind(now, sub.id, sub.grants_done)
         .run()
       continue
@@ -153,13 +153,13 @@ export async function grantDueSubscriptions(env: Env, options: { now?: number; u
             expiresAt: window.expiresAt,
           }),
           // 订单的 credits 记“已发放的积分”，退款按它回收
-          db.prepare(`UPDATE orders SET credits = credits + ?, updated_at = ? WHERE id = ? AND status = 'paid'`)
+          db.prepare(`UPDATE arv_orders SET credits = credits + ?, updated_at = ? WHERE id = ? AND status = 'paid'`)
             .bind(sub.credits_per_month, now, sub.current_order_id),
         )
       }
       next = nextGrantAt(sub, k + 1)
       statements.push(
-        db.prepare('UPDATE subscriptions SET grants_done = ?, next_grant_at = ?, updated_at = ? WHERE id = ? AND grants_done = ?')
+        db.prepare('UPDATE arv_subscriptions SET grants_done = ?, next_grant_at = ?, updated_at = ? WHERE id = ? AND grants_done = ?')
           .bind(k + 1, next, now, sub.id, k),
       )
       try {

@@ -1,19 +1,19 @@
 -- 合规：数据保留、举报下架、相同图片拦截
 
 -- 到期后 R2 对象被删除，行保留（订单/积分流水仍引用它们），只记录过期时间
-ALTER TABLE uploads ADD COLUMN expired_at TEXT;
+ALTER TABLE arv_uploads ADD COLUMN expired_at TEXT;
 -- 原图 SHA-256：下架后用于拦截同一张图片再次上传
-ALTER TABLE uploads ADD COLUMN sha256 TEXT;
-ALTER TABLE generations ADD COLUMN expired_at TEXT;
+ALTER TABLE arv_uploads ADD COLUMN sha256 TEXT;
+ALTER TABLE arv_generations ADD COLUMN expired_at TEXT;
 -- 因举报被下架的时间（成片与原图已删除）
-ALTER TABLE generations ADD COLUMN removed_at TEXT;
+ALTER TABLE arv_generations ADD COLUMN removed_at TEXT;
 
-CREATE INDEX idx_uploads_created ON uploads(created_at);
-CREATE INDEX idx_uploads_sha256 ON uploads(sha256);
-CREATE INDEX idx_generations_completed ON generations(completed_at);
-CREATE INDEX idx_generations_upload ON generations(upload_id);
+CREATE INDEX arv_idx_uploads_created ON arv_uploads(created_at);
+CREATE INDEX arv_idx_uploads_sha256 ON arv_uploads(sha256);
+CREATE INDEX arv_idx_generations_completed ON arv_generations(completed_at);
+CREATE INDEX arv_idx_generations_upload ON arv_generations(upload_id);
 
-CREATE TABLE takedown_requests (
+CREATE TABLE arv_takedown_requests (
   id TEXT PRIMARY KEY,
   reporter_name TEXT NOT NULL, -- 电子签名
   reporter_email TEXT NOT NULL,
@@ -30,10 +30,10 @@ CREATE TABLE takedown_requests (
   resolution_note TEXT,
   created_at TEXT NOT NULL
 );
-CREATE INDEX idx_takedown_status ON takedown_requests(status, due_at);
+CREATE INDEX arv_idx_takedown_status ON arv_takedown_requests(status, due_at);
 
 -- 已下架内容的原图哈希：再次上传直接拒绝
-CREATE TABLE blocked_media (
+CREATE TABLE arv_blocked_media (
   sha256 TEXT PRIMARY KEY,
   takedown_id TEXT,
   created_at TEXT NOT NULL

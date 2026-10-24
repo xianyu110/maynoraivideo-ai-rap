@@ -1,6 +1,6 @@
 -- 兑换码：后台批量生成（或指定一个活动码），用户在设置页兑换成积分批次。
 -- 每个码可用 max_uses 次，每个用户每个码只能兑换一次；兑换在一个 batch 里完成，并发兑换不会超出次数。
-CREATE TABLE redeem_codes (
+CREATE TABLE arv_redeem_codes (
   code TEXT PRIMARY KEY, -- 大写字母和数字，不含分隔符
   batch_id TEXT NOT NULL,
   credits INTEGER NOT NULL CHECK (credits > 0),
@@ -13,12 +13,12 @@ CREATE TABLE redeem_codes (
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
-CREATE INDEX idx_redeem_codes_batch ON redeem_codes(batch_id, created_at);
+CREATE INDEX arv_idx_redeem_codes_batch ON arv_redeem_codes(batch_id, created_at);
 
-CREATE TABLE redeem_uses (
-  code TEXT NOT NULL REFERENCES redeem_codes(code),
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE arv_redeem_uses (
+  code TEXT NOT NULL REFERENCES arv_redeem_codes(code),
+  user_id TEXT NOT NULL REFERENCES arv_users(id) ON DELETE CASCADE,
   created_at TEXT NOT NULL,
   PRIMARY KEY (code, user_id)
 );
-CREATE INDEX idx_redeem_uses_user ON redeem_uses(user_id);
+CREATE INDEX arv_idx_redeem_uses_user ON arv_redeem_uses(user_id);

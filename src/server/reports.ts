@@ -18,7 +18,7 @@ function groupedRevenue(db: D1Database, column: string, since: string) {
     .prepare(
       `SELECT ${column} AS key, ${CURRENCY} AS currency, COUNT(*) AS orders, SUM(${NET_CENTS}) AS cents,
        SUM(refunded_amount_cents) AS refunded_cents
-       FROM orders WHERE ${PAID} AND paid_at >= ? GROUP BY 1, 2 ORDER BY cents DESC LIMIT 50`,
+       FROM arv_orders WHERE ${PAID} AND paid_at >= ? GROUP BY 1, 2 ORDER BY cents DESC LIMIT 50`,
     )
     .bind(since)
 }
@@ -32,34 +32,34 @@ export function registerReportRoutes(routes: Hono<AppContext>) {
         db
           .prepare(
             `SELECT substr(paid_at, 1, 10) AS day, ${CURRENCY} AS currency, COUNT(*) AS orders, SUM(${NET_CENTS}) AS cents
-             FROM orders WHERE ${PAID} AND paid_at >= ? GROUP BY 1, 2 ORDER BY 1`,
+             FROM arv_orders WHERE ${PAID} AND paid_at >= ? GROUP BY 1, 2 ORDER BY 1`,
           )
           .bind(since),
         groupedRevenue(db, `COALESCE(source, 'unknown') || ' / ' || COALESCE(medium, 'unknown')`, since),
         groupedRevenue(db, `COALESCE(country, 'unknown')`, since),
         groupedRevenue(db, 'provider', since),
         groupedRevenue(db, 'package_id', since),
-        db.prepare('SELECT COALESCE(SUM(visits), 0) AS n FROM visit_stats WHERE day >= ?').bind(sinceDay),
+        db.prepare('SELECT COALESCE(SUM(visits), 0) AS n FROM arv_visit_stats WHERE day >= ?').bind(sinceDay),
         db
           .prepare(
-            `SELECT source || ' / ' || medium AS key, SUM(visits) AS n FROM visit_stats WHERE day >= ?
+            `SELECT source || ' / ' || medium AS key, SUM(visits) AS n FROM arv_visit_stats WHERE day >= ?
              GROUP BY 1 ORDER BY n DESC LIMIT 50`,
           )
           .bind(sinceDay),
         db
           .prepare(
             `SELECT COALESCE(signup_source, 'unknown') || ' / ' || COALESCE(signup_medium, 'unknown') AS key, COUNT(*) AS n
-             FROM users WHERE created_at >= ? GROUP BY 1 ORDER BY n DESC LIMIT 50`,
+             FROM arv_users WHERE created_at >= ? GROUP BY 1 ORDER BY n DESC LIMIT 50`,
           )
           .bind(since),
         // 注册队列漏斗：窗口内新注册用户里，多少人下过单 / 付过款 / 生成过视频
         db
           .prepare(
             `SELECT COUNT(*) AS signups,
-               SUM(EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id)) AS checkout,
-               SUM(EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id AND o.status IN ('paid', 'refunded'))) AS paid,
-               SUM(EXISTS (SELECT 1 FROM generations g WHERE g.user_id = u.id)) AS generated
-             FROM users u WHERE u.created_at >= ?`,
+               SUM(EXISTS (SELECT 1 FROM arv_orders o WHERE o.user_id = u.id)) AS checkout,
+               SUM(EXISTS (SELECT 1 FROM arv_orders o WHERE o.user_id = u.id AND o.status IN ('paid', 'refunded'))) AS paid,
+               SUM(EXISTS (SELECT 1 FROM arv_generations g WHERE g.user_id = u.id)) AS generated
+             FROM arv_users u WHERE u.created_at >= ?`,
           )
           .bind(since),
         db
@@ -67,7 +67,7 @@ export function registerReportRoutes(routes: Hono<AppContext>) {
             `SELECT ${CURRENCY} AS currency, SUM(COALESCE(paid_amount_cents, amount_cents)) AS gross_cents,
                SUM(refunded_amount_cents) AS refunded_cents, SUM(CASE WHEN refunded_amount_cents > 0 THEN 1 ELSE 0 END) AS refunded_orders,
                COUNT(*) AS orders
-             FROM orders WHERE ${PAID} AND paid_at >= ? GROUP BY 1`,
+             FROM arv_orders WHERE ${PAID} AND paid_at >= ? GROUP BY 1`,
           )
           .bind(since),
       ])
@@ -116,7 +116,7 @@ export function registerReportRoutes(routes: Hono<AppContext>) {
       `SELECT o.id, u.email, o.provider, o.package_id, o.credits, o.amount_cents, o.currency, o.status,
          o.paid_amount_cents, o.paid_currency, o.refunded_amount_cents, o.refunded_credits,
          o.source, o.medium, o.campaign, o.country, o.device, o.provider_payment_id, o.created_at, o.paid_at, o.refunded_at
-       FROM orders o JOIN users u ON u.id = o.user_id WHERE o.created_at >= ? ORDER BY o.created_at DESC LIMIT 10000`,
+       FROM arv_orders o JOIN arv_users u ON u.id = o.user_id WHERE o.created_at >= ? ORDER BY o.created_at DESC LIMIT 10000`,
     )
       .bind(since)
       .all<Record<string, unknown>>()

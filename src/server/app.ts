@@ -271,7 +271,7 @@ app.post('/api/uploads', async (c) => {
   const key = `uploads/${user.id}/${id}`
   await c.env.MEDIA.put(key, bytes, { httpMetadata: { contentType } })
   await c.env.DB.prepare(
-    'INSERT INTO uploads (id, user_id, r2_key, content_type, size_bytes, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO arv_uploads (id, user_id, r2_key, content_type, size_bytes, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
   )
     .bind(id, user.id, key, contentType, bytes.length, hash, nowIso())
     .run()
@@ -290,12 +290,12 @@ app.post('/api/generations', async (c) => {
   if (!duration) throw new ApiError(400, 'invalid_duration')
   const db = c.env.DB
   const upload = await db
-    .prepare('SELECT * FROM uploads WHERE id = ? AND user_id = ? AND expired_at IS NULL')
+    .prepare('SELECT * FROM arv_uploads WHERE id = ? AND user_id = ? AND expired_at IS NULL')
     .bind(body.uploadId ?? '', user.id)
     .first<UploadRow>()
   if (!upload) throw new ApiError(400, 'invalid_upload')
   const active = await db
-    .prepare(`SELECT COUNT(*) AS n FROM generations WHERE user_id = ? AND status IN ('queued', 'processing')`)
+    .prepare(`SELECT COUNT(*) AS n FROM arv_generations WHERE user_id = ? AND status IN ('queued', 'processing')`)
     .bind(user.id)
     .first<{ n: number }>()
   if ((active?.n ?? 0) >= MAX_ACTIVE_JOBS_PER_USER) throw new ApiError(429, 'too_many_active_jobs')
@@ -312,7 +312,7 @@ app.post('/api/generations', async (c) => {
     await db.batch([
       db
         .prepare(
-          `INSERT INTO generations (id, user_id, template_id, duration_id, duration_seconds, credits_cost, upload_id,
+          `INSERT INTO arv_generations (id, user_id, template_id, duration_id, duration_seconds, credits_cost, upload_id,
            status, provider, provider_meta, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
         )
@@ -342,14 +342,14 @@ app.post('/api/generations', async (c) => {
     await failGeneration(c.env, id, 'enqueue_failed', 'Could not enqueue job')
     throw new ApiError(503, 'queue_unavailable')
   }
-  const row = await db.prepare('SELECT * FROM generations WHERE id = ?').bind(id).first<GenerationRow>()
+  const row = await db.prepare('SELECT * FROM arv_generations WHERE id = ?').bind(id).first<GenerationRow>()
   return c.json({ generation: publicGeneration(row!) }, 201)
 })
 
 app.get('/api/generations', async (c) => {
   const user = requireUser(c)
   const { limit, offset } = pageParams(c, 24)
-  const rows = await c.env.DB.prepare('SELECT * FROM generations WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
+  const rows = await c.env.DB.prepare('SELECT * FROM arv_generations WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
     .bind(user.id, limit, offset)
     .all<GenerationRow>()
   return c.json({ generations: rows.results.map(publicGeneration) })
@@ -357,7 +357,7 @@ app.get('/api/generations', async (c) => {
 
 async function ownGeneration(c: Parameters<typeof requireUser>[0], id: string) {
   const user = requireUser(c)
-  const row = await c.env.DB.prepare('SELECT * FROM generations WHERE id = ? AND user_id = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM arv_generations WHERE id = ? AND user_id = ?')
     .bind(id, user.id)
     .first<GenerationRow>()
   if (!row) throw new ApiError(404, 'not_found')
@@ -386,7 +386,7 @@ app.delete('/api/generations/:id', async (c) => {
   if (row.status === 'queued' || row.status === 'processing') throw new ApiError(409, 'generation_in_progress')
   const keys = [row.output_r2_key, row.share_poster_key].filter((key): key is string => Boolean(key))
   if (keys.length) await c.env.MEDIA.delete(keys)
-  await c.env.DB.prepare('DELETE FROM generations WHERE id = ?').bind(row.id).run()
+  await c.env.DB.prepare('DELETE FROM arv_generations WHERE id = ?').bind(row.id).run()
   return c.json({ ok: true })
 })
 
@@ -417,7 +417,7 @@ app.get('/api/credits/ledger', async (c) => {
   const user = requireUser(c)
   const { limit, offset } = pageParams(c)
   const rows = await c.env.DB.prepare(
-    'SELECT id, delta, reason, ref_id, note, created_at FROM credit_ledger WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?',
+    'SELECT id, delta, reason, ref_id, note, created_at FROM arv_credit_ledger WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?',
   )
     .bind(user.id, limit, offset)
     .all()
@@ -428,7 +428,7 @@ app.get('/api/credits/ledger', async (c) => {
 app.get('/api/credits/expiring', async (c) => {
   const user = requireUser(c)
   const rows = await c.env.DB.prepare(
-    `SELECT SUM(remaining) AS credits, expires_at AS expiresAt FROM credit_grants
+    `SELECT SUM(remaining) AS credits, expires_at AS expiresAt FROM arv_credit_grants
      WHERE user_id = ? AND remaining > 0 AND expires_at > ? GROUP BY expires_at ORDER BY expires_at LIMIT 5`,
   )
     .bind(user.id, nowIso())
@@ -472,7 +472,7 @@ app.post('/api/redeem', async (c) => {
   if (!code) throw new ApiError(400, 'invalid_code')
   await verifyTurnstile(c.env, body.turnstileToken, ip)
   const result = await redeemCode(c.env.DB, user.id, code)
-  const balance = await c.env.DB.prepare('SELECT credits FROM users WHERE id = ?').bind(user.id).first<number>('credits')
+  const balance = await c.env.DB.prepare('SELECT credits FROM arv_users WHERE id = ?').bind(user.id).first<number>('credits')
   return c.json({ ...result, balance })
 })
 
@@ -493,7 +493,7 @@ app.post('/api/checkout', async (c) => {
   const now = nowIso()
   const attr = requestAttribution(c, 'last')
   await c.env.DB.prepare(
-    `INSERT INTO orders (id, user_id, provider, package_id, credits, amount_cents, currency, status,
+    `INSERT INTO arv_orders (id, user_id, provider, package_id, credits, amount_cents, currency, status,
      source, medium, campaign, country, device, attribution, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
@@ -523,12 +523,12 @@ app.post('/api/checkout', async (c) => {
       successUrl: `${siteUrl}${localePath(locale, '/checkout/success')}?order=${id}`,
       cancelUrl: `${siteUrl}${localePath(locale, '/pricing')}`,
     })
-    await c.env.DB.prepare('UPDATE orders SET provider_session_id = ?, updated_at = ? WHERE id = ?')
+    await c.env.DB.prepare('UPDATE arv_orders SET provider_session_id = ?, updated_at = ? WHERE id = ?')
       .bind(result.sessionId, nowIso(), id)
       .run()
     return c.json({ orderId: id, url: result.url })
   } catch (error) {
-    await c.env.DB.prepare(`UPDATE orders SET status = 'failed', updated_at = ? WHERE id = ?`).bind(nowIso(), id).run()
+    await c.env.DB.prepare(`UPDATE arv_orders SET status = 'failed', updated_at = ? WHERE id = ?`).bind(nowIso(), id).run()
     throw error
   }
 })
@@ -576,7 +576,7 @@ app.post('/api/subscription/portal', async (c) => {
 app.get('/api/orders', async (c) => {
   const user = requireUser(c)
   const { limit, offset } = pageParams(c)
-  const rows = await c.env.DB.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?')
+  const rows = await c.env.DB.prepare('SELECT * FROM arv_orders WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?')
     .bind(user.id, limit, offset)
     .all<OrderRow>()
   return c.json({ orders: rows.results.map(publicOrder) })
@@ -584,7 +584,7 @@ app.get('/api/orders', async (c) => {
 
 app.get('/api/orders/:id', async (c) => {
   const user = requireUser(c)
-  const order = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?')
+  const order = await c.env.DB.prepare('SELECT * FROM arv_orders WHERE id = ? AND user_id = ?')
     .bind(c.req.param('id'), user.id)
     .first<OrderRow>()
   if (!order) throw new ApiError(404, 'not_found')
@@ -597,11 +597,11 @@ app.post('/api/orders/:id/reconcile', async (c) => {
   const user = requireUser(c)
   await rateLimit(c.env.AUTH_LIMITER, `reconcile:${user.id}`)
   const id = c.req.param('id')
-  const order = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?').bind(id, user.id).first<OrderRow>()
+  const order = await c.env.DB.prepare('SELECT * FROM arv_orders WHERE id = ? AND user_id = ?').bind(id, user.id).first<OrderRow>()
   if (!order) throw new ApiError(404, 'not_found')
   const status = await reconcileOrder(c.env, order, { minIntervalMs: 10_000 })
-  const latest = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(id).first<OrderRow>()
-  const credits = await c.env.DB.prepare('SELECT credits FROM users WHERE id = ?').bind(user.id).first<number>('credits')
+  const latest = await c.env.DB.prepare('SELECT * FROM arv_orders WHERE id = ?').bind(id).first<OrderRow>()
+  const credits = await c.env.DB.prepare('SELECT credits FROM arv_users WHERE id = ?').bind(user.id).first<number>('credits')
   return c.json({ reconcile: status, order: publicOrder(latest!), credits })
 })
 
@@ -626,7 +626,7 @@ app.post('/api/mock-payments/complete', async (c) => {
     site?: string
     deliver?: boolean
   }>(c)
-  const order = await c.env.DB.prepare(`SELECT * FROM orders WHERE id = ? AND user_id = ? AND provider = 'mock'`)
+  const order = await c.env.DB.prepare(`SELECT * FROM arv_orders WHERE id = ? AND user_id = ? AND provider = 'mock'`)
     .bind(body.orderId ?? '', user.id)
     .first<OrderRow>()
   if (!order) throw new ApiError(404, 'not_found')
@@ -694,7 +694,7 @@ app.post('/api/mock-payments/subscription', async (c) => {
   const sub = await latestSubscription(c.env.DB, user.id)
   if (!sub || sub.provider !== 'mock') throw new ApiError(404, 'subscription_not_found')
   const eventId = body.eventId ?? `mock_${body.action}_${createId('evt')}`
-  const firstOrderId = await c.env.DB.prepare('SELECT id FROM orders WHERE subscription_id = ? ORDER BY created_at, id LIMIT 1')
+  const firstOrderId = await c.env.DB.prepare('SELECT id FROM arv_orders WHERE subscription_id = ? ORDER BY created_at, id LIMIT 1')
     .bind(sub.id)
     .first<string>('id')
   let event: PaymentEvent
@@ -759,7 +759,7 @@ app.post('/api/t/visit', async (c) => {
   const { source, medium } = classifyTouch(sanitizeTouch(body.touch), new URL(c.req.url).hostname)
   const country = c.req.header('cf-ipcountry')
   await c.env.DB.prepare(
-    `INSERT INTO visit_stats (day, source, medium, country, device, visits) VALUES (?, ?, ?, ?, ?, 1)
+    `INSERT INTO arv_visit_stats (day, source, medium, country, device, visits) VALUES (?, ?, ?, ?, ?, 1)
      ON CONFLICT (day, source, medium, country, device) DO UPDATE SET visits = visits + 1`,
   )
     .bind(nowIso().slice(0, 10), source, medium, country && country !== 'XX' ? country : 'unknown', device)
@@ -820,7 +820,7 @@ app.post('/api/contact', async (c) => {
   await verifyTurnstile(c.env, body.turnstileToken, ip)
   const id = createId('msg')
   await c.env.DB.prepare(
-    'INSERT INTO contact_messages (id, user_id, email, topic, message, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO arv_contact_messages (id, user_id, email, topic, message, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
   )
     .bind(id, user?.id ?? null, email, topic, message, 'open', nowIso())
     .run()
@@ -865,9 +865,9 @@ app.delete('/api/account', async (c) => {
   }
   const db = c.env.DB
   await db.batch([
-    db.prepare('DELETE FROM generations WHERE user_id = ?').bind(user.id),
-    db.prepare('DELETE FROM uploads WHERE user_id = ?').bind(user.id),
-    db.prepare('DELETE FROM email_outbox WHERE user_id = ?').bind(user.id),
+    db.prepare('DELETE FROM arv_generations WHERE user_id = ?').bind(user.id),
+    db.prepare('DELETE FROM arv_uploads WHERE user_id = ?').bind(user.id),
+    db.prepare('DELETE FROM arv_email_outbox WHERE user_id = ?').bind(user.id),
     ...clawbackStatements(db, {
       userId: user.id,
       maxAmount: 1_000_000_000, // 全部剩余积分
@@ -876,15 +876,15 @@ app.delete('/api/account', async (c) => {
     }),
     db
       .prepare(
-        `UPDATE users SET email = ?, name = NULL, avatar_url = NULL, google_sub = NULL, status = 'deleted' WHERE id = ?`,
+        `UPDATE arv_users SET email = ?, name = NULL, avatar_url = NULL, google_sub = NULL, status = 'deleted' WHERE id = ?`,
       )
       .bind(`deleted+${user.id}@deleted.invalid`, user.id),
     db
-      .prepare('INSERT OR IGNORE INTO deleted_accounts (email_hash, deleted_at) VALUES (?, ?)')
+      .prepare('INSERT OR IGNORE INTO arv_deleted_accounts (email_hash, deleted_at) VALUES (?, ?)')
       .bind(await deletedEmailHash(c.env, user.email), nowIso()),
   ])
   await endSession(c)
-  await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id).run()
+  await db.prepare('DELETE FROM arv_sessions WHERE user_id = ?').bind(user.id).run()
   return c.json({ ok: true })
 })
 
@@ -895,7 +895,7 @@ app.post('/api/dev/subscription-grants', async (c) => {
   const { days } = await readJson<{ days: number }>(c)
   if (typeof days !== 'number' || !Number.isFinite(days) || days < 0) throw new ApiError(400, 'invalid_days')
   const result = await grantDueSubscriptions(c.env, { now: Date.now() + days * 86400_000, userId: user.id })
-  const row = await c.env.DB.prepare('SELECT credits FROM users WHERE id = ?').bind(user.id).first<{ credits: number }>()
+  const row = await c.env.DB.prepare('SELECT credits FROM arv_users WHERE id = ?').bind(user.id).first<{ credits: number }>()
   return c.json({ ...result, credits: row?.credits ?? 0 })
 })
 
@@ -915,7 +915,7 @@ app.post('/api/dev/expire-credits', async (c) => {
   const { days } = await readJson<{ days: number }>(c)
   if (typeof days !== 'number' || !Number.isFinite(days) || days < 0) throw new ApiError(400, 'invalid_days')
   await c.env.DB.batch(expireStatements(c.env.DB, new Date(Date.now() + days * 86400_000).toISOString(), user.id))
-  const row = await c.env.DB.prepare('SELECT credits FROM users WHERE id = ?').bind(user.id).first<{ credits: number }>()
+  const row = await c.env.DB.prepare('SELECT credits FROM arv_users WHERE id = ?').bind(user.id).first<{ credits: number }>()
   return c.json({ credits: row?.credits ?? 0 })
 })
 
@@ -927,7 +927,7 @@ app.get('/api/dev/emails', async (c) => {
   if (!to && !ref) throw new ApiError(400, 'filter_required')
   const rows = await c.env.DB.prepare(
     `SELECT id, dedupe_key, template, to_email, user_id, locale, params, subject, status, attempts, provider_message_id, last_error
-     FROM email_outbox WHERE (?1 IS NULL OR lower(to_email) = ?1) AND (?2 IS NULL OR instr(dedupe_key, ?2) > 0)
+     FROM arv_email_outbox WHERE (?1 IS NULL OR lower(to_email) = ?1) AND (?2 IS NULL OR instr(dedupe_key, ?2) > 0)
      ORDER BY created_at, dedupe_key`,
   )
     .bind(to, ref)
@@ -948,7 +948,7 @@ app.post('/api/dev/dead-letter', async (c) => {
   if (!isLocalDevRequest(c)) throw new ApiError(404, 'not_found')
   const user = requireUser(c)
   const generationId = (await readJson<{ generationId: string }>(c)).generationId ?? ''
-  const owned = await c.env.DB.prepare('SELECT id FROM generations WHERE id = ? AND user_id = ?').bind(generationId, user.id).first()
+  const owned = await c.env.DB.prepare('SELECT id FROM arv_generations WHERE id = ? AND user_id = ?').bind(generationId, user.id).first()
   if (!owned) throw new ApiError(404, 'not_found')
   return c.json({ failed: await handleDeadLetter(c.env, { kind: 'poll', generationId }) })
 })
@@ -960,7 +960,7 @@ app.post('/api/dev/mock-finish', async (c) => {
   const { generationId = '', polls = 1 } = await readJson<{ generationId?: string; polls?: number }>(c)
   if (!Number.isInteger(polls) || polls < 1 || polls > 5) throw new ApiError(400, 'invalid_polls')
   const updated = await c.env.DB.prepare(
-    `UPDATE generations SET provider_meta = json_set(provider_meta, '$.mockOutcome', NULL, '$.readyAt', 0)
+    `UPDATE arv_generations SET provider_meta = json_set(provider_meta, '$.mockOutcome', NULL, '$.readyAt', 0)
      WHERE id = ? AND user_id = ? AND provider = 'mock' AND provider_meta IS NOT NULL`,
   )
     .bind(generationId, user.id)
@@ -1015,7 +1015,7 @@ app.get('/media/uploads/:id', async (c) => {
   if (!(await verifyUploadSignature(c.env, id, c.req.query('exp') ?? null, c.req.query('sig') ?? null))) {
     return c.text('Forbidden', 403)
   }
-  const upload = await c.env.DB.prepare('SELECT * FROM uploads WHERE id = ?').bind(id).first<UploadRow>()
+  const upload = await c.env.DB.prepare('SELECT * FROM arv_uploads WHERE id = ?').bind(id).first<UploadRow>()
   if (!upload || upload.expired_at) return c.notFound()
   return serveR2Object(c.env.MEDIA, upload.r2_key, c.req.raw, { cacheControl: 'private, max-age=600' })
 })
@@ -1036,7 +1036,7 @@ app.get('/media/shares/:shareId/:file{video|poster\\.jpg}', async (c) => {
 // 记住用户最近使用的界面语言，交易邮件按它选择语言
 async function rememberLocale(env: Env, user: UserRow, locale: string | undefined) {
   if (isLocale(locale) && locale !== user.locale) {
-    await env.DB.prepare('UPDATE users SET locale = ? WHERE id = ?').bind(locale, user.id).run()
+    await env.DB.prepare('UPDATE arv_users SET locale = ? WHERE id = ?').bind(locale, user.id).run()
   }
 }
 

@@ -1,5 +1,5 @@
 -- 用户：credits 是 credit_ledger 的缓存余额，CHECK 保证扣费不会透支（D1 batch 内违反即整体回滚）
-CREATE TABLE users (
+CREATE TABLE arv_users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   name TEXT,
@@ -14,20 +14,20 @@ CREATE TABLE users (
   last_login_at TEXT
 );
 
-CREATE TABLE sessions (
+CREATE TABLE arv_sessions (
   id TEXT PRIMARY KEY, -- sha256(token)，cookie 里只放原始 token
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES arv_users(id) ON DELETE CASCADE,
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   user_agent TEXT,
   ip TEXT
 );
-CREATE INDEX idx_sessions_user ON sessions(user_id);
+CREATE INDEX arv_idx_sessions_user ON arv_sessions(user_id);
 
 -- 积分流水：idempotency_key 唯一，重复入账在 batch 中失败并回滚
-CREATE TABLE credit_ledger (
+CREATE TABLE arv_credit_ledger (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES arv_users(id) ON DELETE CASCADE,
   delta INTEGER NOT NULL,
   reason TEXT NOT NULL, -- signup_bonus | purchase | generation | generation_refund | order_refund | admin_adjust
   ref_id TEXT,
@@ -35,11 +35,11 @@ CREATE TABLE credit_ledger (
   note TEXT,
   created_at TEXT NOT NULL
 );
-CREATE INDEX idx_ledger_user ON credit_ledger(user_id, created_at);
+CREATE INDEX arv_idx_ledger_user ON arv_credit_ledger(user_id, created_at);
 
-CREATE TABLE orders (
+CREATE TABLE arv_orders (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id),
+  user_id TEXT NOT NULL REFERENCES arv_users(id),
   provider TEXT NOT NULL, -- waffo | dodo | mock
   package_id TEXT NOT NULL,
   credits INTEGER NOT NULL,
@@ -56,11 +56,11 @@ CREATE TABLE orders (
   refunded_at TEXT,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX idx_orders_user ON orders(user_id, created_at);
-CREATE INDEX idx_orders_status ON orders(status, created_at);
-CREATE INDEX idx_orders_provider_payment ON orders(provider, provider_payment_id);
+CREATE INDEX arv_idx_orders_user ON arv_orders(user_id, created_at);
+CREATE INDEX arv_idx_orders_status ON arv_orders(status, created_at);
+CREATE INDEX arv_idx_orders_provider_payment ON arv_orders(provider, provider_payment_id);
 
-CREATE TABLE payment_events (
+CREATE TABLE arv_payment_events (
   id TEXT PRIMARY KEY,
   provider TEXT NOT NULL,
   event_id TEXT NOT NULL,
@@ -73,19 +73,19 @@ CREATE TABLE payment_events (
   UNIQUE (provider, event_id)
 );
 
-CREATE TABLE uploads (
+CREATE TABLE arv_uploads (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES arv_users(id) ON DELETE CASCADE,
   r2_key TEXT NOT NULL,
   content_type TEXT NOT NULL,
   size_bytes INTEGER NOT NULL,
   created_at TEXT NOT NULL
 );
-CREATE INDEX idx_uploads_user ON uploads(user_id, created_at);
+CREATE INDEX arv_idx_uploads_user ON arv_uploads(user_id, created_at);
 
-CREATE TABLE generations (
+CREATE TABLE arv_generations (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES arv_users(id) ON DELETE CASCADE,
   template_id TEXT NOT NULL,
   duration_id TEXT NOT NULL,
   duration_seconds INTEGER NOT NULL,
@@ -105,10 +105,10 @@ CREATE TABLE generations (
   completed_at TEXT,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX idx_generations_user ON generations(user_id, created_at);
-CREATE INDEX idx_generations_status ON generations(status, updated_at);
+CREATE INDEX arv_idx_generations_user ON arv_generations(user_id, created_at);
+CREATE INDEX arv_idx_generations_status ON arv_generations(status, updated_at);
 
-CREATE TABLE contact_messages (
+CREATE TABLE arv_contact_messages (
   id TEXT PRIMARY KEY,
   user_id TEXT,
   email TEXT NOT NULL,
@@ -117,10 +117,10 @@ CREATE TABLE contact_messages (
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
   created_at TEXT NOT NULL
 );
-CREATE INDEX idx_contact_status ON contact_messages(status, created_at);
+CREATE INDEX arv_idx_contact_status ON arv_contact_messages(status, created_at);
 
 -- 管理员操作审计
-CREATE TABLE admin_audit (
+CREATE TABLE arv_admin_audit (
   id TEXT PRIMARY KEY,
   admin_user_id TEXT NOT NULL,
   action TEXT NOT NULL,
@@ -129,4 +129,4 @@ CREATE TABLE admin_audit (
   detail TEXT,
   created_at TEXT NOT NULL
 );
-CREATE INDEX idx_admin_audit_created ON admin_audit(created_at);
+CREATE INDEX arv_idx_admin_audit_created ON arv_admin_audit(created_at);

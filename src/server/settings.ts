@@ -114,7 +114,7 @@ export function parseSettingsPatch(input: unknown): Partial<RuntimeSettings> {
 }
 
 async function loadStored(db: D1Database) {
-  const rows = await db.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
+  const rows = await db.prepare('SELECT key, value FROM arv_settings').all<{ key: string; value: string }>()
   const stored: Record<string, unknown> = {}
   for (const row of rows.results) {
     try {
@@ -146,14 +146,14 @@ export const referralActive = (settings: RuntimeSettings) => settings.referralRe
 export const utcDayStart = (now: string) => `${now.slice(0, 10)}T00:00:00.000Z`
 
 export async function generationsToday(db: D1Database, now: string) {
-  return (await db.prepare('SELECT COUNT(*) AS n FROM generations WHERE created_at >= ?').bind(utcDayStart(now)).first<number>('n')) ?? 0
+  return (await db.prepare('SELECT COUNT(*) AS n FROM arv_generations WHERE created_at >= ?').bind(utcDayStart(now)).first<number>('n')) ?? 0
 }
 
 export function dailyCapGuard(db: D1Database, cap: number, now: string) {
   if (cap <= 0) return []
   return [
-    db.prepare('INSERT INTO credit_guard (ok) SELECT COUNT(*) <= ? FROM generations WHERE created_at >= ?').bind(cap, utcDayStart(now)),
-    db.prepare('DELETE FROM credit_guard'),
+    db.prepare('INSERT INTO arv_credit_guard (ok) SELECT COUNT(*) <= ? FROM arv_generations WHERE created_at >= ?').bind(cap, utcDayStart(now)),
+    db.prepare('DELETE FROM arv_credit_guard'),
   ]
 }
 
@@ -170,7 +170,7 @@ async function adminView(db: D1Database) {
     loadStored(db),
     db
       .prepare(
-        `SELECT s.key, s.updated_at AS updatedAt, u.email AS updatedBy FROM settings s LEFT JOIN users u ON u.id = s.updated_by ORDER BY s.key`,
+        `SELECT s.key, s.updated_at AS updatedAt, u.email AS updatedBy FROM arv_settings s LEFT JOIN arv_users u ON u.id = s.updated_by ORDER BY s.key`,
       )
       .all<{ key: string; updatedAt: string; updatedBy: string | null }>(),
   ])
@@ -194,10 +194,10 @@ export function registerSettingsAdminRoutes(routes: Hono<AppContext>) {
       changes[key] = { from: before[key], to: value }
       statements.push(
         value === DEFAULT_SETTINGS[key]
-          ? db.prepare('DELETE FROM settings WHERE key = ?').bind(key)
+          ? db.prepare('DELETE FROM arv_settings WHERE key = ?').bind(key)
           : db
               .prepare(
-                `INSERT INTO settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
+                `INSERT INTO arv_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
                  ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
               )
               .bind(key, JSON.stringify(value), admin.id, now),

@@ -1,5 +1,5 @@
 -- 交易邮件发件箱：同一事件（dedupe_key）只发一次；发送失败按退避重试，由 Cron 补发
-CREATE TABLE email_outbox (
+CREATE TABLE arv_email_outbox (
   id TEXT PRIMARY KEY,
   dedupe_key TEXT NOT NULL UNIQUE, -- 例如 generation_succeeded:<gen id>
   template TEXT NOT NULL,
@@ -16,11 +16,11 @@ CREATE TABLE email_outbox (
   created_at TEXT NOT NULL,
   sent_at TEXT
 );
-CREATE INDEX idx_email_outbox_due ON email_outbox(status, next_attempt_at);
-CREATE INDEX idx_email_outbox_user ON email_outbox(user_id);
-CREATE INDEX idx_email_outbox_created ON email_outbox(created_at);
+CREATE INDEX arv_idx_email_outbox_due ON arv_email_outbox(status, next_attempt_at);
+CREATE INDEX arv_idx_email_outbox_user ON arv_email_outbox(user_id);
+CREATE INDEX arv_idx_email_outbox_created ON arv_email_outbox(created_at);
 
 -- 举报人提交时的界面语言（回执与处理结果邮件用）
-ALTER TABLE takedown_requests ADD COLUMN locale TEXT;
+ALTER TABLE arv_takedown_requests ADD COLUMN locale TEXT;
 -- 已提醒管理员的阶段：0 未提醒，1 即将超时，2 已超时
-ALTER TABLE takedown_requests ADD COLUMN reminder_stage INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE arv_takedown_requests ADD COLUMN reminder_stage INTEGER NOT NULL DEFAULT 0;

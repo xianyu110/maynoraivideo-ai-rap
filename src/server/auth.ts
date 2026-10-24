@@ -19,7 +19,7 @@ export async function loadSessionUser(c: Context<AppContext>): Promise<UserRow |
   if (!token) return null
   const id = await sha256Hex(token)
   const user = await c.env.DB.prepare(
-    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+    `SELECT u.* FROM arv_sessions s JOIN arv_users u ON u.id = s.user_id
      WHERE s.id = ? AND s.expires_at > ?`,
   )
     .bind(id, nowIso())
@@ -32,7 +32,7 @@ export async function startSession(c: Context<AppContext>, userId: string) {
   const token = randomToken()
   const expires = new Date(Date.now() + SESSION_DAYS * 86400_000)
   await c.env.DB.prepare(
-    'INSERT INTO sessions (id, user_id, expires_at, created_at, user_agent, ip) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO arv_sessions (id, user_id, expires_at, created_at, user_agent, ip) VALUES (?, ?, ?, ?, ?, ?)',
   )
     .bind(
       await sha256Hex(token),
@@ -55,7 +55,7 @@ export async function startSession(c: Context<AppContext>, userId: string) {
 export async function endSession(c: Context<AppContext>) {
   const name = sessionCookieName(c.env)
   const token = getCookie(c, name)
-  if (token) await c.env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(await sha256Hex(token)).run()
+  if (token) await c.env.DB.prepare('DELETE FROM arv_sessions WHERE id = ?').bind(await sha256Hex(token)).run()
   deleteCookie(c, name, { path: '/', secure: isProduction(c.env) })
 }
 
@@ -94,7 +94,7 @@ export async function upsertUser(env: Env, profile: SignInProfile): Promise<User
   const db = env.DB
   const existing = await db
     .prepare(
-      `SELECT * FROM users WHERE (google_sub IS NOT NULL AND google_sub = ?1) OR email = ?2
+      `SELECT * FROM arv_users WHERE (google_sub IS NOT NULL AND google_sub = ?1) OR email = ?2
        ORDER BY CASE WHEN google_sub = ?1 THEN 0 ELSE 1 END LIMIT 1`,
     )
     .bind(profile.googleSub, email)
@@ -110,19 +110,19 @@ export async function upsertUser(env: Env, profile: SignInProfile): Promise<User
     }
     await db
       .prepare(
-        `UPDATE users SET name = COALESCE(?, name), avatar_url = COALESCE(?, avatar_url),
+        `UPDATE arv_users SET name = COALESCE(?, name), avatar_url = COALESCE(?, avatar_url),
          google_sub = COALESCE(google_sub, ?), role = COALESCE(?, role), last_login_at = ? WHERE id = ?`,
       )
       .bind(profile.name, profile.picture, profile.googleSub, role ?? null, now, existing.id)
       .run()
-    return (await db.prepare('SELECT * FROM users WHERE id = ?').bind(existing.id).first<UserRow>())!
+    return (await db.prepare('SELECT * FROM arv_users WHERE id = ?').bind(existing.id).first<UserRow>())!
   }
 
   const id = createId('usr')
   const statements = [
     db
       .prepare(
-        `INSERT INTO users (id, email, name, avatar_url, google_sub, role, status, credits, locale, country,
+        `INSERT INTO arv_users (id, email, name, avatar_url, google_sub, role, status, credits, locale, country,
          signup_source, signup_medium, signup_campaign, signup_device, attribution, created_at, last_login_at)
          VALUES (?, ?, ?, ?, ?, ?, 'active', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
@@ -146,7 +146,7 @@ export async function upsertUser(env: Env, profile: SignInProfile): Promise<User
   ]
   // 注销过的邮箱重新注册：不发注册赠送、不绑定邀请人
   const returning = await db
-    .prepare('SELECT 1 AS hit FROM deleted_accounts WHERE email_hash = ?')
+    .prepare('SELECT 1 AS hit FROM arv_deleted_accounts WHERE email_hash = ?')
     .bind(await deletedEmailHash(env, email))
     .first<{ hit: number }>()
   if (profile.referral && !returning) statements.push(bindReferralStatement(db, id, profile.referral, now))
@@ -163,7 +163,7 @@ export async function upsertUser(env: Env, profile: SignInProfile): Promise<User
     )
   }
   await db.batch(statements)
-  return (await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>())!
+  return (await db.prepare('SELECT * FROM arv_users WHERE id = ?').bind(id).first<UserRow>())!
 }
 
 export function publicUser(user: UserRow) {

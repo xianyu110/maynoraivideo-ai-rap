@@ -92,49 +92,49 @@ export async function collectHealthStats(env: Env, now: number, since?: string):
   const accountStart = start('provider_account')
   const accountCodes = PROVIDER_ACCOUNT_ERRORS.map(() => '?').join(', ')
   const reviewWhere = `e.status IN ('orphan', 'mismatch') AND e.created_at >= ?
-    AND (e.status = 'orphan' OR NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = e.order_id AND o.status IN ('paid', 'refunded')))`
+    AND (e.status = 'orphan' OR NOT EXISTS (SELECT 1 FROM arv_orders o WHERE o.id = e.order_id AND o.status IN ('paid', 'refunded')))`
   const [finished, topErrors, deadLetters, accountErrors, backlog, webhooks, latestWebhook, reviews, latestReview, emails] = await db.batch([
     db
       .prepare(
-        `SELECT COUNT(*) AS finished, COALESCE(SUM(status = 'failed'), 0) AS failed FROM generations
+        `SELECT COUNT(*) AS finished, COALESCE(SUM(status = 'failed'), 0) AS failed FROM arv_generations
          WHERE status IN ('succeeded', 'failed') AND ${finishedSince} AND COALESCE(error_code, '') NOT IN (${excluded})`,
       )
       .bind(genStart, genStart, ...EXCLUDED_FAILURES),
     db
       .prepare(
-        `SELECT error_code, COUNT(*) AS n FROM generations
+        `SELECT error_code, COUNT(*) AS n FROM arv_generations
          WHERE status = 'failed' AND ${finishedSince} AND COALESCE(error_code, '') NOT IN (${excluded})
          GROUP BY error_code ORDER BY n DESC LIMIT 3`,
       )
       .bind(genStart, genStart, ...EXCLUDED_FAILURES),
     db
-      .prepare(`SELECT COUNT(*) AS n FROM generations WHERE status = 'failed' AND ${finishedSince} AND error_code = 'dead_letter'`)
+      .prepare(`SELECT COUNT(*) AS n FROM arv_generations WHERE status = 'failed' AND ${finishedSince} AND error_code = 'dead_letter'`)
       .bind(deadStart, deadStart),
     db
       .prepare(
-        `SELECT error_code, COUNT(*) AS n FROM generations WHERE status = 'failed' AND ${finishedSince} AND error_code IN (${accountCodes})
+        `SELECT error_code, COUNT(*) AS n FROM arv_generations WHERE status = 'failed' AND ${finishedSince} AND error_code IN (${accountCodes})
          GROUP BY error_code ORDER BY n DESC`,
       )
       .bind(accountStart, accountStart, ...PROVIDER_ACCOUNT_ERRORS),
     db
-      .prepare(`SELECT COUNT(*) AS n FROM generations WHERE status IN ('queued', 'processing') AND created_at < ?`)
+      .prepare(`SELECT COUNT(*) AS n FROM arv_generations WHERE status IN ('queued', 'processing') AND created_at < ?`)
       .bind(new Date(now - ALERT_RULES.job_backlog.windowMinutes * 60_000).toISOString()),
-    db.prepare(`SELECT COUNT(*) AS n FROM payment_events WHERE status = 'failed' AND created_at >= ?`).bind(start('payment_webhook')),
+    db.prepare(`SELECT COUNT(*) AS n FROM arv_payment_events WHERE status = 'failed' AND created_at >= ?`).bind(start('payment_webhook')),
     db
       .prepare(
-        `SELECT provider, event_type, error FROM payment_events WHERE status = 'failed' AND created_at >= ? ORDER BY created_at DESC LIMIT 1`,
+        `SELECT provider, event_type, error FROM arv_payment_events WHERE status = 'failed' AND created_at >= ? ORDER BY created_at DESC LIMIT 1`,
       )
       .bind(start('payment_webhook')),
-    db.prepare(`SELECT COUNT(*) AS n FROM payment_events e WHERE ${reviewWhere}`).bind(start('payment_review')),
+    db.prepare(`SELECT COUNT(*) AS n FROM arv_payment_events e WHERE ${reviewWhere}`).bind(start('payment_review')),
     db
       .prepare(
-        `SELECT e.provider, e.event_type, e.status, e.order_id, e.error FROM payment_events e WHERE ${reviewWhere}
+        `SELECT e.provider, e.event_type, e.status, e.order_id, e.error FROM arv_payment_events e WHERE ${reviewWhere}
          ORDER BY e.created_at DESC LIMIT 1`,
       )
       .bind(start('payment_review')),
     db
       .prepare(
-        `SELECT COUNT(*) AS n FROM email_outbox WHERE created_at >= ? AND template != 'admin_alert'
+        `SELECT COUNT(*) AS n FROM arv_email_outbox WHERE created_at >= ? AND template != 'admin_alert'
          AND (status = 'failed' OR (status = 'pending' AND attempts >= ?))`,
       )
       .bind(start('email_failures'), EMAIL_STUCK_ATTEMPTS),

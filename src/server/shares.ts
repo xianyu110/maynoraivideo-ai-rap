@@ -40,7 +40,7 @@ export function sharePosterPath(shareId: string) {
 
 export async function findSharedGeneration(env: Env, shareId: string) {
   if (!site.share.enabled || !SHARE_ID.test(shareId)) return null
-  return env.DB.prepare('SELECT * FROM generations WHERE share_id = ?').bind(shareId).first<GenerationRow>()
+  return env.DB.prepare('SELECT * FROM arv_generations WHERE share_id = ?').bind(shareId).first<GenerationRow>()
 }
 
 export function shareView(row: GenerationRow | null): ShareView {
@@ -102,7 +102,7 @@ export async function startShare(env: Env, row: GenerationRow, poster: Uint8Arra
     await env.MEDIA.put(posterKey, poster, { httpMetadata: { contentType: 'image/jpeg' } })
   }
   const now = nowIso()
-  await env.DB.prepare('UPDATE generations SET share_id = ?, share_poster_key = ?, shared_at = COALESCE(shared_at, ?), updated_at = ? WHERE id = ?')
+  await env.DB.prepare('UPDATE arv_generations SET share_id = ?, share_poster_key = ?, shared_at = COALESCE(shared_at, ?), updated_at = ? WHERE id = ?')
     .bind(shareId, posterKey, now, now, row.id)
     .run()
   return shareId
@@ -111,7 +111,7 @@ export async function startShare(env: Env, row: GenerationRow, poster: Uint8Arra
 // 停止分享：删封面、清空 share_id，旧链接从此 404
 export async function stopShare(env: Env, row: GenerationRow) {
   if (row.share_poster_key) await env.MEDIA.delete(row.share_poster_key)
-  await env.DB.prepare('UPDATE generations SET share_id = NULL, share_poster_key = NULL, shared_at = NULL, updated_at = ? WHERE id = ?')
+  await env.DB.prepare('UPDATE arv_generations SET share_id = NULL, share_poster_key = NULL, shared_at = NULL, updated_at = ? WHERE id = ?')
     .bind(nowIso(), row.id)
     .run()
 }

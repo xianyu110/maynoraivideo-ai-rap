@@ -42,7 +42,7 @@ const NET_REVENUE = `COALESCE(paid_currency, currency) AS currency, SUM(CASE WHE
 const revenuePerCredit = (db: D1Database) =>
   db.prepare(
     `SELECT SUM(COALESCE(paid_amount_cents, amount_cents) - refunded_amount_cents) AS cents, SUM(credits - refunded_credits) AS credits
-     FROM orders WHERE status = 'paid' AND COALESCE(paid_currency, currency) = 'USD'`,
+     FROM arv_orders WHERE status = 'paid' AND COALESCE(paid_currency, currency) = 'USD'`,
   )
 const perCredit = (result: D1Result) => {
   const row = result.results[0] as { cents: number | null; credits: number | null } | undefined
@@ -68,34 +68,34 @@ adminRoutes.get('/stats', async (c) => {
   const since7d = new Date(Date.now() - 7 * 86400_000).toISOString()
   const since30d = new Date(Date.now() - 30 * 86400_000).toISOString()
   const [users, newUsers, revenue, revenue30d, generations, outstanding, openMessages, failedEvents, takedowns, failedEmails, cost30d, perCreditRow] = await db.batch([
-    db.prepare(`SELECT COUNT(*) AS n FROM users WHERE status != 'deleted'`),
-    db.prepare('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?').bind(since7d),
+    db.prepare(`SELECT COUNT(*) AS n FROM arv_users WHERE status != 'deleted'`),
+    db.prepare('SELECT COUNT(*) AS n FROM arv_users WHERE created_at >= ?').bind(since7d),
     db.prepare(
-      `SELECT ${NET_REVENUE} FROM orders WHERE status IN ('paid', 'refunded') GROUP BY 1`,
+      `SELECT ${NET_REVENUE} FROM arv_orders WHERE status IN ('paid', 'refunded') GROUP BY 1`,
     ),
     db
       .prepare(
-        `SELECT ${NET_REVENUE} FROM orders WHERE status IN ('paid', 'refunded') AND paid_at >= ? GROUP BY 1`,
+        `SELECT ${NET_REVENUE} FROM arv_orders WHERE status IN ('paid', 'refunded') AND paid_at >= ? GROUP BY 1`,
       )
       .bind(since30d),
-    db.prepare('SELECT status, COUNT(*) AS n FROM generations GROUP BY status'),
-    db.prepare('SELECT COALESCE(SUM(credits), 0) AS n FROM users'),
-    db.prepare(`SELECT COUNT(*) AS n FROM contact_messages WHERE status = 'open'`),
+    db.prepare('SELECT status, COUNT(*) AS n FROM arv_generations GROUP BY status'),
+    db.prepare('SELECT COALESCE(SUM(credits), 0) AS n FROM arv_users'),
+    db.prepare(`SELECT COUNT(*) AS n FROM arv_contact_messages WHERE status = 'open'`),
     // 待处理：处理失败、找不到订单，以及金额/商品不符且订单还没补单或退款的付款事件
     db.prepare(
-      `SELECT COUNT(*) AS n FROM payment_events e WHERE e.status IN ('failed', 'orphan')
-       OR (e.status = 'mismatch' AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = e.order_id AND o.status IN ('paid', 'refunded')))`,
+      `SELECT COUNT(*) AS n FROM arv_payment_events e WHERE e.status IN ('failed', 'orphan')
+       OR (e.status = 'mismatch' AND NOT EXISTS (SELECT 1 FROM arv_orders o WHERE o.id = e.order_id AND o.status IN ('paid', 'refunded')))`,
     ),
     db
-      .prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN due_at < ? THEN 1 ELSE 0 END), 0) AS overdue FROM takedown_requests WHERE status = 'open'`)
+      .prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN due_at < ? THEN 1 ELSE 0 END), 0) AS overdue FROM arv_takedown_requests WHERE status = 'open'`)
       .bind(new Date().toISOString()),
-    db.prepare(`SELECT COUNT(*) AS n FROM email_outbox WHERE status = 'failed'`),
+    db.prepare(`SELECT COUNT(*) AS n FROM arv_email_outbox WHERE status = 'failed'`),
     // 成本含出片后才被判失败的任务（服务商照样计费）；收入只算成功且未退积分的
     db
       .prepare(
         `SELECT COUNT(provider_cost_cents) AS videos, COALESCE(SUM(provider_cost_cents), 0) AS cost_cents,
          COALESCE(SUM(CASE WHEN status = 'succeeded' AND refunded = 0 THEN credits_cost ELSE 0 END), 0) AS credits
-         FROM generations WHERE completed_at >= ?`,
+         FROM arv_generations WHERE completed_at >= ?`,
       )
       .bind(since30d),
     revenuePerCredit(db),
@@ -123,7 +123,7 @@ adminRoutes.get('/stats', async (c) => {
 // ---------- 用户 ----------
 
 // 付过款的订单（含之后被全额退款的），用于“付费用户”筛选和付款订单数
-const PAID_ORDERS = `(SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id AND o.status IN ('paid', 'refunded'))`
+const PAID_ORDERS = `(SELECT COUNT(*) FROM arv_orders o WHERE o.user_id = u.id AND o.status IN ('paid', 'refunded'))`
 const USER_SORTS: Record<string, string> = {
   created: 'u.created_at DESC',
   login: 'u.last_login_at IS NULL, u.last_login_at DESC',
@@ -152,7 +152,7 @@ adminRoutes.get('/users', async (c) => {
   if (c.req.query('paying') === '1') where.push(`${PAID_ORDERS} > 0`)
   const order = USER_SORTS[c.req.query('sort') ?? ''] ?? USER_SORTS.created
   const rows = await c.env.DB.prepare(
-    `SELECT u.*, ${PAID_ORDERS} AS paid_orders FROM users u
+    `SELECT u.*, ${PAID_ORDERS} AS paid_orders FROM arv_users u
      ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY ${order} LIMIT ? OFFSET ?`,
   )
     .bind(...params, limit, offset)
@@ -163,35 +163,35 @@ adminRoutes.get('/users', async (c) => {
 adminRoutes.get('/users/:id', async (c) => {
   const db = c.env.DB
   const id = c.req.param('id')
-  const user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>()
+  const user = await db.prepare('SELECT * FROM arv_users WHERE id = ?').bind(id).first<UserRow>()
   if (!user) throw new ApiError(404, 'not_found')
   const [orders, ledger, grants, generations, spend, generationStats, auditRows, subscriptions] = await db.batch([
-    db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(id),
-    db.prepare('SELECT * FROM credit_ledger WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').bind(id),
+    db.prepare('SELECT * FROM arv_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(id),
+    db.prepare('SELECT * FROM arv_credit_ledger WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').bind(id),
     // 还有剩余的批次，按扣费顺序（先到期先扣）
     db
       .prepare(
-        `SELECT id, source, ref_id, amount, remaining, expires_at, created_at FROM credit_grants
+        `SELECT id, source, ref_id, amount, remaining, expires_at, created_at FROM arv_credit_grants
          WHERE user_id = ? AND remaining > 0 ORDER BY expires_at IS NULL, expires_at, created_at, id LIMIT 50`,
       )
       .bind(id),
-    db.prepare('SELECT * FROM generations WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(id),
+    db.prepare('SELECT * FROM arv_generations WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(id),
     // 累计付款按实收币种汇总，不受上面 50 条的截断影响
     db
       .prepare(
         `SELECT COALESCE(paid_currency, currency) AS currency, COUNT(*) AS orders,
          SUM(COALESCE(paid_amount_cents, amount_cents)) AS paid_cents, SUM(refunded_amount_cents) AS refunded_cents
-         FROM orders WHERE user_id = ? AND status IN ('paid', 'refunded') GROUP BY 1`,
+         FROM arv_orders WHERE user_id = ? AND status IN ('paid', 'refunded') GROUP BY 1`,
       )
       .bind(id),
-    db.prepare('SELECT status, COUNT(*) AS n, SUM(credits_cost) AS credits FROM generations WHERE user_id = ? GROUP BY status').bind(id),
+    db.prepare('SELECT status, COUNT(*) AS n, SUM(credits_cost) AS credits FROM arv_generations WHERE user_id = ? GROUP BY status').bind(id),
     db
       .prepare(
-        `SELECT a.id, a.action, a.detail, a.created_at, u.email AS admin_email FROM admin_audit a
-         LEFT JOIN users u ON u.id = a.admin_user_id WHERE a.target_type = 'user' AND a.target_id = ? ORDER BY a.created_at DESC LIMIT 50`,
+        `SELECT a.id, a.action, a.detail, a.created_at, u.email AS admin_email FROM arv_admin_audit a
+         LEFT JOIN arv_users u ON u.id = a.admin_user_id WHERE a.target_type = 'user' AND a.target_id = ? ORDER BY a.created_at DESC LIMIT 50`,
       )
       .bind(id),
-    db.prepare('SELECT * FROM subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10').bind(id),
+    db.prepare('SELECT * FROM arv_subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10').bind(id),
   ])
   return c.json({
     user,
@@ -218,7 +218,7 @@ adminRoutes.post('/users/:id/credits', async (c) => {
   const days = body.expiresInDays == null ? null : Number(body.expiresInDays)
   if (days !== null && (delta < 0 || !Number.isInteger(days) || days < 1 || days > 3650)) throw new ApiError(400, 'invalid_expiry')
   const expiresAt = days ? new Date(Date.now() + days * 86400_000).toISOString() : null
-  const exists = await c.env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(id).first()
+  const exists = await c.env.DB.prepare('SELECT id FROM arv_users WHERE id = ?').bind(id).first()
   if (!exists) throw new ApiError(404, 'not_found')
   try {
     await c.env.DB.batch(
@@ -248,8 +248,8 @@ adminRoutes.post('/users/:id/status', async (c) => {
   if (id === admin.id) throw new ApiError(400, 'cannot_change_self')
   const db = c.env.DB
   await db.batch([
-    db.prepare(`UPDATE users SET status = ? WHERE id = ? AND status != 'deleted'`).bind(status, id),
-    ...(status === 'banned' ? [db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id)] : []),
+    db.prepare(`UPDATE arv_users SET status = ? WHERE id = ? AND status != 'deleted'`).bind(status, id),
+    ...(status === 'banned' ? [db.prepare('DELETE FROM arv_sessions WHERE user_id = ?').bind(id)] : []),
   ])
   await audit(c.env, admin, `user.${status === 'banned' ? 'ban' : 'unban'}`, 'user', id)
   return c.json({ ok: true })
@@ -261,7 +261,7 @@ adminRoutes.post('/users/:id/role', async (c) => {
   const { role } = await readJson<{ role: 'user' | 'admin' }>(c)
   if (role !== 'user' && role !== 'admin') throw new ApiError(400, 'invalid_role')
   if (id === admin.id) throw new ApiError(400, 'cannot_change_self')
-  await c.env.DB.prepare('UPDATE users SET role = ? WHERE id = ?').bind(role, id).run()
+  await c.env.DB.prepare('UPDATE arv_users SET role = ? WHERE id = ?').bind(role, id).run()
   await audit(c.env, admin, 'user.role', 'user', id, { role })
   return c.json({ ok: true })
 })
@@ -288,7 +288,7 @@ adminRoutes.get('/orders', async (c) => {
     params.push(q, `%${q.toLowerCase()}%`, q, q)
   }
   const rows = await c.env.DB.prepare(
-    `SELECT o.*, u.email AS user_email FROM orders o JOIN users u ON u.id = o.user_id
+    `SELECT o.*, u.email AS user_email FROM arv_orders o JOIN arv_users u ON u.id = o.user_id
      ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
   )
     .bind(...params, limit, offset)
@@ -301,24 +301,24 @@ adminRoutes.get('/orders/:id', async (c) => {
   const db = c.env.DB
   const id = c.req.param('id')
   const order = await db
-    .prepare('SELECT o.*, u.email AS user_email, u.credits AS user_credits FROM orders o JOIN users u ON u.id = o.user_id WHERE o.id = ?')
+    .prepare('SELECT o.*, u.email AS user_email, u.credits AS user_credits FROM arv_orders o JOIN arv_users u ON u.id = o.user_id WHERE o.id = ?')
     .bind(id)
     .first<OrderRow & { user_email: string; user_credits: number }>()
   if (!order) throw new ApiError(404, 'not_found')
   const [events, ledger, auditRows, emails] = await db.batch([
     // payload 含支付商回传的客户信息，详情页只列事件摘要
     db
-      .prepare('SELECT id, provider, event_id, event_type, status, error, created_at FROM payment_events WHERE order_id = ? ORDER BY created_at')
+      .prepare('SELECT id, provider, event_id, event_type, status, error, created_at FROM arv_payment_events WHERE order_id = ? ORDER BY created_at')
       .bind(id),
-    db.prepare('SELECT id, delta, reason, note, created_at FROM credit_ledger WHERE ref_id = ? ORDER BY created_at').bind(id),
+    db.prepare('SELECT id, delta, reason, note, created_at FROM arv_credit_ledger WHERE ref_id = ? ORDER BY created_at').bind(id),
     db
       .prepare(
-        `SELECT a.id, a.action, a.detail, a.created_at, u.email AS admin_email FROM admin_audit a
-         LEFT JOIN users u ON u.id = a.admin_user_id WHERE a.target_type = 'order' AND a.target_id = ? ORDER BY a.created_at`,
+        `SELECT a.id, a.action, a.detail, a.created_at, u.email AS admin_email FROM arv_admin_audit a
+         LEFT JOIN arv_users u ON u.id = a.admin_user_id WHERE a.target_type = 'order' AND a.target_id = ? ORDER BY a.created_at`,
       )
       .bind(id),
     db
-      .prepare('SELECT id, template, to_email, status, last_error, created_at, sent_at FROM email_outbox WHERE dedupe_key LIKE ? ORDER BY created_at')
+      .prepare('SELECT id, template, to_email, status, last_error, created_at, sent_at FROM arv_email_outbox WHERE dedupe_key LIKE ? ORDER BY created_at')
       .bind(`%:${id}`),
   ])
   return c.json({ order, events: events!.results, ledger: ledger!.results, audit: auditRows!.results, emails: emails!.results })
@@ -329,7 +329,7 @@ adminRoutes.get('/orders/:id', async (c) => {
 // - mode=local（mock 订单、或已在支付商后台退过款但 webhook 丢失时）：只做本地记账并按比例回收积分
 adminRoutes.post('/orders/:id/refund', async (c) => {
   const admin = requireAdmin(c)
-  const order = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(c.req.param('id')).first<OrderRow>()
+  const order = await c.env.DB.prepare('SELECT * FROM arv_orders WHERE id = ?').bind(c.req.param('id')).first<OrderRow>()
   if (!order) throw new ApiError(404, 'not_found')
   if (order.status !== 'paid') throw new ApiError(409, 'order_not_paid')
   const body = await readJson<{ note?: string; amountCents?: number | null; mode?: 'provider' | 'local'; refundId?: string }>(c)
@@ -370,7 +370,7 @@ adminRoutes.post('/orders/:id/refund', async (c) => {
 // 查单：向支付商确认这笔订单是否已付款，已付就按 webhook 同样的规则入账。补单前先查，能省去去支付商后台核对
 adminRoutes.post('/orders/:id/reconcile', async (c) => {
   const admin = requireAdmin(c)
-  const order = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(c.req.param('id')).first<OrderRow>()
+  const order = await c.env.DB.prepare('SELECT * FROM arv_orders WHERE id = ?').bind(c.req.param('id')).first<OrderRow>()
   if (!order) throw new ApiError(404, 'not_found')
   const status = await reconcileOrder(c.env, order)
   await audit(c.env, admin, 'order.reconcile', 'order', order.id, { status })
@@ -381,7 +381,7 @@ adminRoutes.post('/orders/:id/reconcile', async (c) => {
 adminRoutes.post('/orders/:id/mark-paid', async (c) => {
   const admin = requireAdmin(c)
   const db = c.env.DB
-  const order = await db.prepare('SELECT * FROM orders WHERE id = ?').bind(c.req.param('id')).first<OrderRow>()
+  const order = await db.prepare('SELECT * FROM arv_orders WHERE id = ?').bind(c.req.param('id')).first<OrderRow>()
   if (!order) throw new ApiError(404, 'not_found')
   if (order.status === 'paid' || order.status === 'refunded') throw new ApiError(409, 'order_already_paid')
   // 订阅订单要建订阅、积分带到期时间，只能按支付商的记录入账：用“向支付商查单”
@@ -400,7 +400,7 @@ adminRoutes.post('/orders/:id/mark-paid', async (c) => {
         note: `admin mark-paid: ${note}`,
       }),
       db
-        .prepare(`UPDATE orders SET status = 'paid', paid_at = ?, updated_at = ?, paid_amount_cents = amount_cents WHERE id = ?`)
+        .prepare(`UPDATE arv_orders SET status = 'paid', paid_at = ?, updated_at = ?, paid_amount_cents = amount_cents WHERE id = ?`)
         .bind(now, now, order.id),
     ])
   } catch (error) {
@@ -432,7 +432,7 @@ adminRoutes.get('/generations', async (c) => {
   const [rows, perCreditRow] = await db.batch([
     db
       .prepare(
-        `SELECT g.*, u.email AS user_email FROM generations g JOIN users u ON u.id = g.user_id
+        `SELECT g.*, u.email AS user_email FROM arv_generations g JOIN arv_users u ON u.id = g.user_id
          ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY g.created_at DESC LIMIT ? OFFSET ?`,
       )
       .bind(...params, limit, offset),
@@ -443,7 +443,7 @@ adminRoutes.get('/generations', async (c) => {
 
 // 客服排查用：管理员可预览任意用户的成片
 adminRoutes.get('/generations/:id/video', async (c) => {
-  const row = await c.env.DB.prepare('SELECT output_r2_key FROM generations WHERE id = ?').bind(c.req.param('id')).first<{ output_r2_key: string | null }>()
+  const row = await c.env.DB.prepare('SELECT output_r2_key FROM arv_generations WHERE id = ?').bind(c.req.param('id')).first<{ output_r2_key: string | null }>()
   if (!row?.output_r2_key) throw new ApiError(404, 'not_ready')
   return serveR2Object(c.env.MEDIA, row.output_r2_key, c.req.raw, { cacheControl: 'private, no-store' })
 })
@@ -464,7 +464,7 @@ adminRoutes.get('/takedowns', async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT t.*, g.status AS generation_status, g.removed_at AS generation_removed_at,
      g.output_r2_key IS NOT NULL AS has_output, u.email AS owner_email
-     FROM takedown_requests t LEFT JOIN generations g ON g.id = t.generation_id LEFT JOIN users u ON u.id = g.user_id
+     FROM arv_takedown_requests t LEFT JOIN arv_generations g ON g.id = t.generation_id LEFT JOIN arv_users u ON u.id = g.user_id
      WHERE t.status = ? ORDER BY ${status === 'open' ? 't.due_at ASC' : 't.created_at DESC'} LIMIT ? OFFSET ?`,
   )
     .bind(status, limit, offset)
@@ -476,7 +476,7 @@ adminRoutes.get('/takedowns', async (c) => {
 adminRoutes.post('/takedowns/:id/resolve', async (c) => {
   const admin = requireAdmin(c)
   const db = c.env.DB
-  const report = await db.prepare('SELECT * FROM takedown_requests WHERE id = ?').bind(c.req.param('id')).first<TakedownRow>()
+  const report = await db.prepare('SELECT * FROM arv_takedown_requests WHERE id = ?').bind(c.req.param('id')).first<TakedownRow>()
   if (!report) throw new ApiError(404, 'not_found')
   if (report.status !== 'open') throw new ApiError(409, 'already_resolved')
   const body = await readJson<{ action: 'remove' | 'reject'; generationId?: string; note?: string }>(c)
@@ -487,7 +487,7 @@ adminRoutes.post('/takedowns/:id/resolve', async (c) => {
   if (body.action === 'remove') {
     generationId = body.generationId?.trim() || report.generation_id
     const generation = generationId
-      ? await db.prepare('SELECT * FROM generations WHERE id = ?').bind(generationId).first<GenerationRow>()
+      ? await db.prepare('SELECT * FROM arv_generations WHERE id = ?').bind(generationId).first<GenerationRow>()
       : null
     if (!generation) throw new ApiError(404, 'generation_not_found')
     const { owners: removedOwners, ...removal } = await removeReportedContent(c.env, generation, report.id)
@@ -501,7 +501,7 @@ adminRoutes.post('/takedowns/:id/resolve', async (c) => {
   const status = body.action === 'remove' ? 'removed' : 'rejected'
   const updated = await db
     .prepare(
-      `UPDATE takedown_requests SET status = ?, generation_id = ?, resolved_at = ?, resolved_by = ?, resolution_note = ?
+      `UPDATE arv_takedown_requests SET status = ?, generation_id = ?, resolved_at = ?, resolved_by = ?, resolution_note = ?
        WHERE id = ? AND status = 'open'`,
     )
     .bind(status, generationId, nowIso(), admin.id, note || null, report.id)
@@ -517,7 +517,7 @@ adminRoutes.post('/takedowns/:id/resolve', async (c) => {
 adminRoutes.get('/messages', async (c) => {
   const { limit, offset } = pageParams(c)
   const status = c.req.query('status') ?? 'open'
-  const rows = await c.env.DB.prepare('SELECT * FROM contact_messages WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
+  const rows = await c.env.DB.prepare('SELECT * FROM arv_contact_messages WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
     .bind(status, limit, offset)
     .all()
   return c.json({ messages: rows.results })
@@ -527,7 +527,7 @@ adminRoutes.post('/messages/:id/status', async (c) => {
   const admin = requireAdmin(c)
   const { status } = await readJson<{ status: 'open' | 'closed' }>(c)
   if (status !== 'open' && status !== 'closed') throw new ApiError(400, 'invalid_status')
-  await c.env.DB.prepare('UPDATE contact_messages SET status = ? WHERE id = ?').bind(status, c.req.param('id')).run()
+  await c.env.DB.prepare('UPDATE arv_contact_messages SET status = ? WHERE id = ?').bind(status, c.req.param('id')).run()
   await audit(c.env, admin, 'message.status', 'message', c.req.param('id'), { status })
   return c.json({ ok: true })
 })
@@ -550,7 +550,7 @@ adminRoutes.get('/emails', async (c) => {
   }
   const rows = await c.env.DB.prepare(
     `SELECT id, dedupe_key, template, to_email, locale, subject, status, attempts, next_attempt_at, provider_message_id, last_error,
-     created_at, sent_at FROM email_outbox ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+     created_at, sent_at FROM arv_email_outbox ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
      ORDER BY created_at DESC LIMIT ? OFFSET ?`,
   )
     .bind(...params, limit, offset)
@@ -573,7 +573,7 @@ adminRoutes.get('/payment-events', async (c) => {
   const { limit, offset } = pageParams(c)
   const status = c.req.query('status')
   const rows = await c.env.DB.prepare(
-    `SELECT id, provider, event_id, event_type, order_id, status, error, created_at FROM payment_events
+    `SELECT id, provider, event_id, event_type, order_id, status, error, created_at FROM arv_payment_events
      ${status ? 'WHERE status = ?' : ''} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
   )
     .bind(...(status ? [status] : []), limit, offset)
@@ -584,7 +584,7 @@ adminRoutes.get('/payment-events', async (c) => {
 adminRoutes.get('/audit', async (c) => {
   const { limit, offset } = pageParams(c)
   const rows = await c.env.DB.prepare(
-    `SELECT a.*, u.email AS admin_email FROM admin_audit a LEFT JOIN users u ON u.id = a.admin_user_id
+    `SELECT a.*, u.email AS admin_email FROM arv_admin_audit a LEFT JOIN arv_users u ON u.id = a.admin_user_id
      ORDER BY a.created_at DESC LIMIT ? OFFSET ?`,
   )
     .bind(limit, offset)

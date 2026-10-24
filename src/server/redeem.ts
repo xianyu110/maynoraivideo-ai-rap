@@ -51,8 +51,8 @@ function rejection(row: RedeemCodeRow | null, redeemed: boolean, now: string) {
 
 async function lookup(db: D1Database, code: string, userId: string) {
   const [row, use] = await db.batch([
-    db.prepare('SELECT * FROM redeem_codes WHERE code = ?').bind(code),
-    db.prepare('SELECT 1 AS used FROM redeem_uses WHERE code = ? AND user_id = ?').bind(code, userId),
+    db.prepare('SELECT * FROM arv_redeem_codes WHERE code = ?').bind(code),
+    db.prepare('SELECT 1 AS used FROM arv_redeem_uses WHERE code = ? AND user_id = ?').bind(code, userId),
   ])
   return { row: (row!.results[0] as RedeemCodeRow | undefined) ?? null, redeemed: use!.results.length > 0 }
 }
@@ -67,14 +67,14 @@ export async function redeemCode(db: D1Database, userId: string, code: string) {
     await db.batch([
       db
         .prepare(
-          `INSERT INTO redeem_uses (code, user_id, created_at)
-           SELECT code, ?2, ?3 FROM redeem_codes
+          `INSERT INTO arv_redeem_uses (code, user_id, created_at)
+           SELECT code, ?2, ?3 FROM arv_redeem_codes
            WHERE code = ?1 AND disabled_at IS NULL AND (expires_at IS NULL OR expires_at > ?3) AND used_count < max_uses`,
         )
         .bind(code, userId, now),
-      db.prepare('INSERT INTO credit_guard (ok) SELECT COUNT(*) = 1 FROM redeem_uses WHERE code = ? AND user_id = ? AND created_at = ?').bind(code, userId, now),
-      db.prepare('DELETE FROM credit_guard'),
-      db.prepare('UPDATE redeem_codes SET used_count = used_count + 1 WHERE code = ?').bind(code),
+      db.prepare('INSERT INTO arv_credit_guard (ok) SELECT COUNT(*) = 1 FROM arv_redeem_uses WHERE code = ? AND user_id = ? AND created_at = ?').bind(code, userId, now),
+      db.prepare('DELETE FROM arv_credit_guard'),
+      db.prepare('UPDATE arv_redeem_codes SET used_count = used_count + 1 WHERE code = ?').bind(code),
       ...ledgerStatements(db, {
         userId,
         delta: row.credits,
@@ -140,7 +140,7 @@ export function registerRedeemAdminRoutes(routes: Hono<AppContext>) {
     // 一条语句插入整批（json_each 展开），不受 D1 每次调用的查询数和绑定参数个数限制
     const insert = (codes: string[]) =>
       c.env.DB.prepare(
-        `INSERT INTO redeem_codes (code, batch_id, credits, max_uses, credit_valid_days, expires_at, note, created_by, created_at)
+        `INSERT INTO arv_redeem_codes (code, batch_id, credits, max_uses, credit_valid_days, expires_at, note, created_by, created_at)
          SELECT value, ?, ?, ?, ?, ?, ?, ?, ? FROM json_each(?)`,
       )
         .bind(batchId, credits, maxUses, creditValidDays, expiresAt, note, admin.id, now, JSON.stringify(codes))
@@ -177,7 +177,7 @@ export function registerRedeemAdminRoutes(routes: Hono<AppContext>) {
       params.push(`%${q}%`, `%${c.req.query('q')!.trim()}%`)
     }
     const rows = await c.env.DB.prepare(
-      `SELECT * FROM redeem_codes ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at DESC, code LIMIT ? OFFSET ?`,
+      `SELECT * FROM arv_redeem_codes ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at DESC, code LIMIT ? OFFSET ?`,
     )
       .bind(...params, limit, offset)
       .all<RedeemCodeRow & { created_at: string }>()
@@ -188,7 +188,7 @@ export function registerRedeemAdminRoutes(routes: Hono<AppContext>) {
     const batch = c.req.query('batch')
     const rows = await c.env.DB.prepare(
       `SELECT code, batch_id, credits, max_uses, used_count, credit_valid_days, expires_at, note, disabled_at, created_at
-       FROM redeem_codes ${batch ? 'WHERE batch_id = ?' : ''} ORDER BY created_at DESC, code LIMIT 10000`,
+       FROM arv_redeem_codes ${batch ? 'WHERE batch_id = ?' : ''} ORDER BY created_at DESC, code LIMIT 10000`,
     )
       .bind(...(batch ? [batch] : []))
       .all<Record<string, unknown> & { code: string }>()
@@ -204,9 +204,9 @@ export function registerRedeemAdminRoutes(routes: Hono<AppContext>) {
     const admin = requireAdmin(c)
     const code = normalizeCode(c.req.param('code'))
     if (!code) throw new ApiError(404, 'not_found')
-    const result = await c.env.DB.prepare('UPDATE redeem_codes SET disabled_at = ? WHERE code = ? AND disabled_at IS NULL').bind(nowIso(), code).run()
+    const result = await c.env.DB.prepare('UPDATE arv_redeem_codes SET disabled_at = ? WHERE code = ? AND disabled_at IS NULL').bind(nowIso(), code).run()
     if (!result.meta.changes) {
-      const exists = await c.env.DB.prepare('SELECT 1 FROM redeem_codes WHERE code = ?').bind(code).first()
+      const exists = await c.env.DB.prepare('SELECT 1 FROM arv_redeem_codes WHERE code = ?').bind(code).first()
       if (!exists) throw new ApiError(404, 'not_found')
       return c.json({ ok: true })
     }

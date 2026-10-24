@@ -70,12 +70,12 @@ describe('读取与每日上限（SQLite）', () => {
   })
 
   const env = () => ({ DB: db, KV: kv }) as unknown as Env
-  const store = (key: string, raw: string) => sqlite.prepare(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, '2026-01-01')`).run(key, raw)
+  const store = (key: string, raw: string) => sqlite.prepare(`INSERT INTO arv_settings (key, value, updated_at) VALUES (?, ?, '2026-01-01')`).run(key, raw)
   const generation = (createdAt: string) => {
     const id = `gen_${++seq}`
     return db
       .prepare(
-        `INSERT INTO generations (id, user_id, template_id, duration_id, duration_seconds, credits_cost, upload_id, provider, created_at, updated_at)
+        `INSERT INTO arv_generations (id, user_id, template_id, duration_id, duration_seconds, credits_cost, upload_id, provider, created_at, updated_at)
          VALUES (?, 'u', 't', 'd', 5, 1, 'up', 'mock', ?, ?)`,
       )
       .bind(id, createdAt, createdAt)
@@ -88,7 +88,7 @@ describe('读取与每日上限（SQLite）', () => {
     expect((await getSettings(env())).signupBonusCredits).toBe(3)
     expect(JSON.parse(kv.store.get('settings:v1')!)).toEqual({ signupBonusCredits: 3 })
 
-    sqlite.prepare(`UPDATE settings SET value = '9' WHERE key = 'signupBonusCredits'`).run()
+    sqlite.prepare(`UPDATE arv_settings SET value = '9' WHERE key = 'signupBonusCredits'`).run()
     expect((await getSettings(env())).signupBonusCredits).toBe(3)
     kv.store.clear()
     const fresh = await getSettings(env())
@@ -106,7 +106,7 @@ describe('读取与每日上限（SQLite）', () => {
     expect(await generationsToday(db, now)).toBe(2)
     await expect(run([generation(now), ...dailyCapGuard(db, 2, now)])).rejects.toThrow(/CHECK constraint/)
     expect(await generationsToday(db, now)).toBe(2)
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM credit_guard').get()).toEqual({ n: 0 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM arv_credit_guard').get()).toEqual({ n: 0 })
 
     expect(dailyCapGuard(db, 0, now)).toEqual([])
     await run([generation(now)])

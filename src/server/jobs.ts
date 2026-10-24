@@ -97,7 +97,7 @@ export function handleDeadLetter(env: Env, message: VideoJobMessage) {
 }
 
 export async function handleVideoJob(env: Env, message: VideoJobMessage) {
-  const generation = await env.DB.prepare('SELECT * FROM generations WHERE id = ?')
+  const generation = await env.DB.prepare('SELECT * FROM arv_generations WHERE id = ?')
     .bind(message.generationId)
     .first<GenerationRow>()
   if (!generation) return
@@ -109,14 +109,14 @@ async function submitGeneration(env: Env, generation: GenerationRow) {
   if (generation.status !== 'queued') return
   // 先抢占：队列至少投递一次，重复消息不能重复向 provider 提交（会重复计费）
   const claimed = await env.DB.prepare(
-    `UPDATE generations SET status = 'processing', attempts = attempts + 1, updated_at = ? WHERE id = ? AND status = 'queued'`,
+    `UPDATE arv_generations SET status = 'processing', attempts = attempts + 1, updated_at = ? WHERE id = ? AND status = 'queued'`,
   )
     .bind(nowIso(), generation.id)
     .run()
   if (!claimed.meta.changes) return
 
   const duration = findDuration(generation.duration_id)
-  const upload = await env.DB.prepare('SELECT * FROM uploads WHERE id = ?').bind(generation.upload_id).first<UploadRow>()
+  const upload = await env.DB.prepare('SELECT * FROM arv_uploads WHERE id = ?').bind(generation.upload_id).first<UploadRow>()
   if (!duration || !upload || upload.expired_at) {
     await failGeneration(env, generation.id, 'invalid_input', 'Upload or duration no longer exists')
     return
@@ -142,7 +142,7 @@ async function submitGeneration(env: Env, generation: GenerationRow) {
     })
     const now = nowIso()
     await env.DB.prepare(
-      `UPDATE generations SET provider_request_id = ?, provider_meta = ?, started_at = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE arv_generations SET provider_request_id = ?, provider_meta = ?, started_at = ?, updated_at = ? WHERE id = ?`,
     )
       .bind(result.requestId, JSON.stringify(result.meta), now, now, generation.id)
       .run()
@@ -153,7 +153,7 @@ async function submitGeneration(env: Env, generation: GenerationRow) {
       return
     }
     // 可重试：放回 queued，让队列重投时重新抢占
-    await env.DB.prepare(`UPDATE generations SET status = 'queued', updated_at = ? WHERE id = ? AND status = 'processing'`)
+    await env.DB.prepare(`UPDATE arv_generations SET status = 'queued', updated_at = ? WHERE id = ? AND status = 'processing'`)
       .bind(nowIso(), generation.id)
       .run()
     throw error
@@ -179,7 +179,7 @@ async function pollGeneration(env: Env, generation: GenerationRow) {
       await failGeneration(env, generation.id, 'timeout', 'Generation timed out')
       return
     }
-    await env.DB.prepare('UPDATE generations SET updated_at = ? WHERE id = ?').bind(nowIso(), generation.id).run()
+    await env.DB.prepare('UPDATE arv_generations SET updated_at = ? WHERE id = ?').bind(nowIso(), generation.id).run()
     await enqueueJob(env, { kind: 'poll', generationId: generation.id }, POLL_DELAY_SECONDS[provider.id])
     return
   }
@@ -206,7 +206,7 @@ async function pollGeneration(env: Env, generation: GenerationRow) {
   const now = nowIso()
   const costCents = status.costCents ?? provider.costCents(generation.duration_seconds)
   const saved = await env.DB.prepare(
-    `UPDATE generations SET status = 'succeeded', output_r2_key = ?, provider_cost_cents = ?, completed_at = ?, updated_at = ?
+    `UPDATE arv_generations SET status = 'succeeded', output_r2_key = ?, provider_cost_cents = ?, completed_at = ?, updated_at = ?
      WHERE id = ? AND status = 'processing'`,
   )
     .bind(outputKey, costCents, now, now, generation.id)
@@ -216,11 +216,11 @@ async function pollGeneration(env: Env, generation: GenerationRow) {
     return
   }
   // webhook 和定时轮询可能同时处理同一任务：另一路已经成功落库时，同一个 outputKey 就是它的成片，不能删
-  const current = await env.DB.prepare('SELECT status FROM generations WHERE id = ?').bind(generation.id).first<{ status: string }>()
+  const current = await env.DB.prepare('SELECT status FROM arv_generations WHERE id = ?').bind(generation.id).first<{ status: string }>()
   if (current?.status === 'succeeded') return
   // 期间已被判失败（超时、管理员失败或下架）：不留下无主的成片，但服务商已经出片计费，成本照记
   await env.MEDIA.delete(outputKey)
-  await env.DB.prepare('UPDATE generations SET provider_cost_cents = ? WHERE id = ? AND provider_cost_cents IS NULL')
+  await env.DB.prepare('UPDATE arv_generations SET provider_cost_cents = ? WHERE id = ? AND provider_cost_cents IS NULL')
     .bind(costCents, generation.id)
     .run()
 }
@@ -238,7 +238,7 @@ export async function failGeneration(env: Env, generationId: string, code: strin
     results = await db.batch([
       db
         .prepare(
-          `UPDATE generations SET status = 'failed', refunded = 1, error_code = ?, error_message = ?, completed_at = ?, updated_at = ?
+          `UPDATE arv_generations SET status = 'failed', refunded = 1, error_code = ?, error_message = ?, completed_at = ?, updated_at = ?
            WHERE id = ? AND status IN ('queued', 'processing')`,
         )
         .bind(code.slice(0, 100), message.slice(0, 1000), now, now, generationId),
@@ -262,7 +262,7 @@ export async function runScheduledMaintenance(env: Env) {
 
   const stuck = await db
     .prepare(
-      `SELECT * FROM generations WHERE status IN ('queued', 'processing') AND updated_at < ? ORDER BY updated_at LIMIT 50`,
+      `SELECT * FROM arv_generations WHERE status IN ('queued', 'processing') AND updated_at < ? ORDER BY updated_at LIMIT 50`,
     )
     .bind(staleBefore)
     .all<GenerationRow>()
@@ -277,7 +277,7 @@ export async function runScheduledMaintenance(env: Env) {
     } else if (generation.attempts < 3) {
       // 抢占后、拿到 request id 前 Worker 中断：放回队列重新提交
       await db
-        .prepare(`UPDATE generations SET status = 'queued', updated_at = ? WHERE id = ? AND status = 'processing'`)
+        .prepare(`UPDATE arv_generations SET status = 'queued', updated_at = ? WHERE id = ? AND status = 'processing'`)
         .bind(nowIso(), generation.id)
         .run()
       await enqueueJob(env, { kind: 'submit', generationId: generation.id })
@@ -291,9 +291,9 @@ export async function runScheduledMaintenance(env: Env) {
 
   const now = nowIso()
   await db.batch([
-    db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now),
+    db.prepare('DELETE FROM arv_sessions WHERE expires_at < ?').bind(now),
     db
-      .prepare(`UPDATE orders SET status = 'canceled', updated_at = ? WHERE status = 'pending' AND created_at < ?`)
+      .prepare(`UPDATE arv_orders SET status = 'canceled', updated_at = ? WHERE status = 'pending' AND created_at < ?`)
       .bind(now, new Date(Date.now() - 24 * 3600_000).toISOString()),
     ...expireStatements(db, now),
   ])

@@ -52,10 +52,10 @@ export async function requestReferral(c: Context<AppContext>): Promise<SignupRef
 export function bindReferralStatement(db: D1Database, inviteeId: string, referral: SignupReferral, now = nowIso()) {
   return db
     .prepare(
-      `INSERT INTO referrals (invitee_id, inviter_id, ip_hash, status, reject_reason, created_at)
+      `INSERT INTO arv_referrals (invitee_id, inviter_id, ip_hash, status, reject_reason, created_at)
        SELECT ?1, id, ?2, CASE WHEN ip_full THEN 'rejected' ELSE 'pending' END, CASE WHEN ip_full THEN 'ip_limit' END, ?3
-       FROM (SELECT u.id, (?2 IS NOT NULL AND (SELECT COUNT(*) FROM referrals r WHERE r.inviter_id = u.id AND r.ip_hash = ?2) >= ?4) AS ip_full
-             FROM users u WHERE u.referral_code = ?5 AND u.status = 'active' AND u.id <> ?1)`,
+       FROM (SELECT u.id, (?2 IS NOT NULL AND (SELECT COUNT(*) FROM arv_referrals r WHERE r.inviter_id = u.id AND r.ip_hash = ?2) >= ?4) AS ip_full
+             FROM arv_users u WHERE u.referral_code = ?5 AND u.status = 'active' AND u.id <> ?1)`,
     )
     .bind(inviteeId, referral.ipHash, now, site.referralMaxPerIp, referral.code)
 }
@@ -71,8 +71,8 @@ export async function referralRewardStatements(
   const row = await db
     .prepare(
       `SELECT r.inviter_id, u.status AS inviter_status,
-       (SELECT COUNT(*) FROM referrals x WHERE x.inviter_id = r.inviter_id AND x.rewarded_at > ?) AS recent
-       FROM referrals r JOIN users u ON u.id = r.inviter_id WHERE r.invitee_id = ? AND r.status = 'pending'`,
+       (SELECT COUNT(*) FROM arv_referrals x WHERE x.inviter_id = r.inviter_id AND x.rewarded_at > ?) AS recent
+       FROM arv_referrals r JOIN arv_users u ON u.id = r.inviter_id WHERE r.invitee_id = ? AND r.status = 'pending'`,
     )
     .bind(new Date(Date.parse(now) - MONTH_MS).toISOString(), order.user_id)
     .first<{ inviter_id: string; inviter_status: string; recent: number }>()
@@ -83,19 +83,19 @@ export async function referralRewardStatements(
   if (reject) {
     return [
       db
-        .prepare(`UPDATE referrals SET status = 'rejected', reject_reason = ? WHERE invitee_id = ? AND status = 'pending'`)
+        .prepare(`UPDATE arv_referrals SET status = 'rejected', reject_reason = ? WHERE invitee_id = ? AND status = 'pending'`)
         .bind(reject, order.user_id),
     ]
   }
   return [
     db
       .prepare(
-        `UPDATE referrals SET status = 'rewarded', reward_order_id = ?, reward_credits = ?, rewarded_at = ?
+        `UPDATE arv_referrals SET status = 'rewarded', reward_order_id = ?, reward_credits = ?, rewarded_at = ?
          WHERE invitee_id = ? AND status = 'pending'`,
       )
       .bind(order.id, credits, now, order.user_id),
-    db.prepare('INSERT INTO credit_guard (ok) SELECT COUNT(*) = 1 FROM referrals WHERE invitee_id = ? AND reward_order_id = ?').bind(order.user_id, order.id),
-    db.prepare('DELETE FROM credit_guard'),
+    db.prepare('INSERT INTO arv_credit_guard (ok) SELECT COUNT(*) = 1 FROM arv_referrals WHERE invitee_id = ? AND reward_order_id = ?').bind(order.user_id, order.id),
+    db.prepare('DELETE FROM arv_credit_guard'),
     ...ledgerStatements(db, {
       userId: row.inviter_id,
       delta: credits,
@@ -110,14 +110,14 @@ export async function referralRewardStatements(
 // 两笔退款并发时只有先提交的那笔能把 rewarded 改成 reversed，后一笔断言失败，调用方去掉这些语句重试
 export async function referralClawbackStatements(db: D1Database, order: Pick<OrderRow, 'id'>, now = nowIso()) {
   const row = await db
-    .prepare(`SELECT inviter_id, reward_credits FROM referrals WHERE reward_order_id = ? AND status = 'rewarded'`)
+    .prepare(`SELECT inviter_id, reward_credits FROM arv_referrals WHERE reward_order_id = ? AND status = 'rewarded'`)
     .bind(order.id)
     .first<{ inviter_id: string; reward_credits: number }>()
   if (!row) return []
   return [
-    db.prepare(`UPDATE referrals SET status = 'reversed', reversed_at = ? WHERE reward_order_id = ? AND status = 'rewarded'`).bind(now, order.id),
-    db.prepare('INSERT INTO credit_guard (ok) SELECT changes() = 1'),
-    db.prepare('DELETE FROM credit_guard'),
+    db.prepare(`UPDATE arv_referrals SET status = 'reversed', reversed_at = ? WHERE reward_order_id = ? AND status = 'rewarded'`).bind(now, order.id),
+    db.prepare('INSERT INTO arv_credit_guard (ok) SELECT changes() = 1'),
+    db.prepare('DELETE FROM arv_credit_guard'),
     ...clawbackStatements(db, {
       userId: row.inviter_id,
       maxAmount: row.reward_credits,
@@ -132,11 +132,11 @@ export async function referralClawbackStatements(db: D1Database, order: Pick<Ord
 // 第一次打开邀请卡片时生成邀请码；撞码（概率可忽略）换一个重试
 export async function ensureReferralCode(db: D1Database, userId: string) {
   for (let attempt = 0; ; attempt++) {
-    const existing = await db.prepare('SELECT referral_code FROM users WHERE id = ?').bind(userId).first<{ referral_code: string | null }>()
+    const existing = await db.prepare('SELECT referral_code FROM arv_users WHERE id = ?').bind(userId).first<{ referral_code: string | null }>()
     if (!existing) throw new Error(`user not found: ${userId}`)
     if (existing.referral_code) return existing.referral_code
     try {
-      await db.prepare('UPDATE users SET referral_code = ? WHERE id = ? AND referral_code IS NULL').bind(generateReferralCode(), userId).run()
+      await db.prepare('UPDATE arv_users SET referral_code = ? WHERE id = ? AND referral_code IS NULL').bind(generateReferralCode(), userId).run()
     } catch (error) {
       if (!isUniqueConstraintError(error) || attempt >= 2) throw error
     }
@@ -148,7 +148,7 @@ export async function referralSummary(db: D1Database, userId: string) {
     .prepare(
       `SELECT COUNT(*) AS invited, COALESCE(SUM(status = 'rewarded'), 0) AS rewarded,
        COALESCE(SUM(CASE WHEN status = 'rewarded' THEN reward_credits ELSE 0 END), 0) AS credits
-       FROM referrals WHERE inviter_id = ?`,
+       FROM arv_referrals WHERE inviter_id = ?`,
     )
     .bind(userId)
     .first<{ invited: number; rewarded: number; credits: number }>()
@@ -167,7 +167,7 @@ export function registerReferralAdminRoutes(routes: Hono<AppContext>) {
           `SELECT r.inviter_id AS userId, u.email, u.referral_code AS code, COUNT(*) AS invited,
            SUM(r.status = 'rewarded') AS rewarded, SUM(r.status = 'reversed') AS reversed, SUM(r.status = 'rejected') AS rejected,
            COALESCE(SUM(CASE WHEN r.status = 'rewarded' THEN r.reward_credits ELSE 0 END), 0) AS credits, MAX(r.created_at) AS lastAt
-           FROM referrals r JOIN users u ON u.id = r.inviter_id WHERE r.created_at >= ?
+           FROM arv_referrals r JOIN arv_users u ON u.id = r.inviter_id WHERE r.created_at >= ?
            GROUP BY r.inviter_id ORDER BY rewarded DESC, invited DESC, lastAt DESC LIMIT 50`,
         )
         .bind(since),
@@ -175,7 +175,7 @@ export function registerReferralAdminRoutes(routes: Hono<AppContext>) {
         .prepare(
           `SELECT r.invitee_id AS inviteeId, invitee.email AS inviteeEmail, r.inviter_id AS inviterId, inviter.email AS inviterEmail,
            r.status, r.reject_reason AS rejectReason, r.reward_order_id AS orderId, r.reward_credits AS credits, r.created_at AS createdAt
-           FROM referrals r JOIN users invitee ON invitee.id = r.invitee_id JOIN users inviter ON inviter.id = r.inviter_id
+           FROM arv_referrals r JOIN arv_users invitee ON invitee.id = r.invitee_id JOIN arv_users inviter ON inviter.id = r.inviter_id
            WHERE r.created_at >= ? ORDER BY r.created_at DESC LIMIT 50`,
         )
         .bind(since),
@@ -184,7 +184,7 @@ export function registerReferralAdminRoutes(routes: Hono<AppContext>) {
           `SELECT COUNT(*) AS invited, COALESCE(SUM(status = 'rewarded'), 0) AS rewarded, COALESCE(SUM(status = 'reversed'), 0) AS reversed,
            COALESCE(SUM(status = 'rejected'), 0) AS rejected,
            COALESCE(SUM(CASE WHEN status = 'rewarded' THEN reward_credits ELSE 0 END), 0) AS credits
-           FROM referrals WHERE created_at >= ?`,
+           FROM arv_referrals WHERE created_at >= ?`,
         )
         .bind(since),
     ])

@@ -26,7 +26,7 @@ export async function reconcileOrder(
   if (!provider?.fetchPaidEvent) return 'skipped'
   const db = env.DB
   const review = await db
-    .prepare(`SELECT 1 FROM payment_events WHERE order_id = ? AND status = 'mismatch' LIMIT 1`)
+    .prepare(`SELECT 1 FROM arv_payment_events WHERE order_id = ? AND status = 'mismatch' LIMIT 1`)
     .bind(order.id)
     .first()
   if (review) return 'review'
@@ -35,7 +35,7 @@ export async function reconcileOrder(
   const now = options.now ?? Date.now()
   const claimed = await db
     .prepare(
-      `UPDATE orders SET last_reconciled_at = ? WHERE id = ? AND status NOT IN ('paid', 'refunded')
+      `UPDATE arv_orders SET last_reconciled_at = ? WHERE id = ? AND status NOT IN ('paid', 'refunded')
        AND (last_reconciled_at IS NULL OR last_reconciled_at <= ?)`,
     )
     .bind(new Date(now).toISOString(), order.id, new Date(now - (options.minIntervalMs ?? 0)).toISOString())
@@ -58,12 +58,12 @@ export async function reconcilePendingOrders(env: Env, options: { now?: number; 
   const now = options.now ?? Date.now()
   const nowIsoString = new Date(now).toISOString()
   const rows = await env.DB.prepare(
-    `SELECT * FROM orders o
+    `SELECT * FROM arv_orders o
      WHERE o.status = 'pending' AND o.created_at <= ?1 AND o.created_at > ?2 AND (?4 IS NULL OR o.user_id = ?4)
        AND o.provider_session_id IS NOT NULL
        AND (o.last_reconciled_at IS NULL
          OR julianday(?3) - julianday(o.created_at) >= 2 * (julianday(o.last_reconciled_at) - julianday(o.created_at)))
-       AND NOT EXISTS (SELECT 1 FROM payment_events e WHERE e.order_id = o.id AND e.status = 'mismatch')
+       AND NOT EXISTS (SELECT 1 FROM arv_payment_events e WHERE e.order_id = o.id AND e.status = 'mismatch')
      ORDER BY o.created_at LIMIT ${SWEEP_BATCH}`,
   )
     .bind(

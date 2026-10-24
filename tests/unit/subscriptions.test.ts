@@ -117,15 +117,15 @@ describe('订阅入账', () => {
     sqlite.exec('PRAGMA foreign_keys = ON')
     migrate(sqlite)
     env = { DB: d1Shim(sqlite), KV: kvShim() } as unknown as Env
-    sqlite.prepare('INSERT INTO users (id, email, credits, status, created_at) VALUES (?, ?, 0, ?, ?)').run('u1', 'u1@example.com', 'active', iso())
+    sqlite.prepare('INSERT INTO arv_users (id, email, credits, status, created_at) VALUES (?, ?, 0, ?, ?)').run('u1', 'u1@example.com', 'active', iso())
   })
 
-  const credits = () => (sqlite.prepare(`SELECT credits FROM users WHERE id = 'u1'`).get() as { credits: number }).credits
-  const sub = () => sqlite.prepare(`SELECT * FROM subscriptions WHERE user_id = 'u1'`).get() as unknown as SubscriptionRow
-  const order = (id: string) => sqlite.prepare('SELECT * FROM orders WHERE id = ?').get(id) as unknown as OrderRow
-  const orders = () => sqlite.prepare(`SELECT id, status, credits, subscription_id FROM orders WHERE user_id = 'u1' ORDER BY created_at, rowid`).all() as unknown as OrderRow[]
+  const credits = () => (sqlite.prepare(`SELECT credits FROM arv_users WHERE id = 'u1'`).get() as { credits: number }).credits
+  const sub = () => sqlite.prepare(`SELECT * FROM arv_subscriptions WHERE user_id = 'u1'`).get() as unknown as SubscriptionRow
+  const order = (id: string) => sqlite.prepare('SELECT * FROM arv_orders WHERE id = ?').get(id) as unknown as OrderRow
+  const orders = () => sqlite.prepare(`SELECT id, status, credits, subscription_id FROM arv_orders WHERE user_id = 'u1' ORDER BY created_at, rowid`).all() as unknown as OrderRow[]
   const grants = (refId: string) =>
-    sqlite.prepare('SELECT amount, remaining, expires_at FROM credit_grants WHERE ref_id = ? ORDER BY rowid').all(refId) as Array<{
+    sqlite.prepare('SELECT amount, remaining, expires_at FROM arv_credit_grants WHERE ref_id = ? ORDER BY rowid').all(refId) as Array<{
       amount: number
       remaining: number
       expires_at: string | null
@@ -135,7 +135,7 @@ describe('订阅入账', () => {
     const id = `ord_${++seq}`
     sqlite
       .prepare(
-        `INSERT INTO orders (id, user_id, provider, package_id, credits, amount_cents, currency, status, created_at, updated_at)
+        `INSERT INTO arv_orders (id, user_id, provider, package_id, credits, amount_cents, currency, status, created_at, updated_at)
          VALUES (?, 'u1', 'mock', ?, ?, ?, 'USD', 'pending', ?, ?)`,
       )
       .run(id, packageId, orderCredits, amountCents, iso(), iso())
@@ -201,7 +201,7 @@ describe('订阅入账', () => {
     const pack = addOrder('starter', 990, 20)
     expect((await process(charge(pack, 'pay_y', 990, { providerSubscriptionId: 'msub_x' }))).status).toBe('mismatch')
     expect(credits()).toBe(0)
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM subscriptions').get()).toEqual({ n: 0 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM arv_subscriptions').get()).toEqual({ n: 0 })
   })
 
   it('续费：每次扣款新建一张订单（重放不重复建），金额按订阅锁定的价格核对，不符时只记待处理订单', async () => {
@@ -294,9 +294,9 @@ describe('订阅入账', () => {
     const pack = addOrder('starter', 990, 20)
     await process(charge(pack, 'pay_pack', 990, null))
     // 第一个月的批次已过期作废（余额里还在，等过期清理），这里模拟用户已用掉第二个月的一部分
-    sqlite.exec(`UPDATE credit_grants SET remaining = 0 WHERE ref_id = '${first}' AND expires_at < '${iso()}'`)
-    sqlite.exec(`UPDATE credit_grants SET remaining = 15 WHERE ref_id = '${first}' AND expires_at > '${iso()}'`)
-    sqlite.exec(`UPDATE users SET credits = 35 WHERE id = 'u1'`)
+    sqlite.exec(`UPDATE arv_credit_grants SET remaining = 0 WHERE ref_id = '${first}' AND expires_at < '${iso()}'`)
+    sqlite.exec(`UPDATE arv_credit_grants SET remaining = 15 WHERE ref_id = '${first}' AND expires_at > '${iso()}'`)
+    sqlite.exec(`UPDATE arv_users SET credits = 35 WHERE id = 'u1'`)
 
     expect(await refundOrder(env.DB, order(first), { refundKey: 'rf_1', amountCents: null, note: 'refund' })).toBe(true)
     expect(order(first)).toMatchObject({ status: 'refunded', refunded_credits: yearly.credits * 2 })

@@ -25,7 +25,7 @@ async function safely(label: string, run: () => Promise<unknown>) {
 
 // 已注销、封禁的用户不发
 async function activeUser(env: Env, userId: string) {
-  return env.DB.prepare(`SELECT id, email, locale FROM users WHERE id = ? AND status = 'active'`).bind(userId).first<Recipient>()
+  return env.DB.prepare(`SELECT id, email, locale FROM arv_users WHERE id = ? AND status = 'active'`).bind(userId).first<Recipient>()
 }
 
 // 每个管理员一封（固定中文），key 加上收件人
@@ -35,7 +35,7 @@ export function adminAlerts(env: Env, key: string, build: (to: string) => Omit<O
 
 export function notifyGenerationFinished(env: Env, generationId: string) {
   return safely('generation', async () => {
-    const generation = await env.DB.prepare('SELECT * FROM generations WHERE id = ?').bind(generationId).first<GenerationRow>()
+    const generation = await env.DB.prepare('SELECT * FROM arv_generations WHERE id = ?').bind(generationId).first<GenerationRow>()
     if (!generation) return
     const user = await activeUser(env, generation.user_id)
     if (!user) return
@@ -79,7 +79,7 @@ export function paidChatText(order: OrderRow) {
 // 只在订单首次入账时调用（processPaymentEvent 返回 processed、后台补单），重放的 webhook 不会重复通知
 export function notifyOrderPaid(env: Env, orderId: string) {
   return safely('order', async () => {
-    const order = await env.DB.prepare(`SELECT * FROM orders WHERE id = ? AND status = 'paid'`).bind(orderId).first<OrderRow>()
+    const order = await env.DB.prepare(`SELECT * FROM arv_orders WHERE id = ? AND status = 'paid'`).bind(orderId).first<OrderRow>()
     if (!order) return
     const webhook = env.PAYMENT_NOTIFY_WEBHOOK_URL
     if (webhook) await safely('order chat', () => postChatMessage(webhook, paidChatText(order)))
@@ -183,7 +183,7 @@ export function notifyContactMessage(env: Env, message: { id: string; email: str
 export async function runTakedownReminders(env: Env, options: { now?: number; takedownId?: string } = {}) {
   const now = options.now ?? Date.now()
   const rows = await env.DB.prepare(
-    `SELECT * FROM takedown_requests WHERE status = 'open' AND reminder_stage < 2 AND due_at <= ?
+    `SELECT * FROM arv_takedown_requests WHERE status = 'open' AND reminder_stage < 2 AND due_at <= ?
      ${options.takedownId ? 'AND id = ?' : ''} ORDER BY due_at LIMIT 50`,
   )
     .bind(new Date(now + REMIND_BEFORE_HOURS * 3600_000).toISOString(), ...(options.takedownId ? [options.takedownId] : []))
@@ -201,7 +201,7 @@ export async function runTakedownReminders(env: Env, options: { now?: number; ta
       })),
     )
     if (!ok) continue
-    await env.DB.prepare('UPDATE takedown_requests SET reminder_stage = ? WHERE id = ? AND reminder_stage < ?')
+    await env.DB.prepare('UPDATE arv_takedown_requests SET reminder_stage = ? WHERE id = ? AND reminder_stage < ?')
       .bind(stage, report.id, stage)
       .run()
     reminded++

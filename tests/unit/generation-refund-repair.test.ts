@@ -10,29 +10,29 @@ const run = (statements: D1PreparedStatement[]) => db.batch(statements as unknow
 const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString()
 
 function addUser(id: string, credits = 0) {
-  sqlite.prepare(`INSERT INTO users (id, email, credits, created_at) VALUES (?, ?, ?, ?)`).run(id, `${id}@example.com`, credits, iso())
+  sqlite.prepare(`INSERT INTO arv_users (id, email, credits, created_at) VALUES (?, ?, ?, ?)`).run(id, `${id}@example.com`, credits, iso())
 }
 
 function insertGeneration(row: { id: string; userId: string; cost: number; status: string; refunded: number }) {
   sqlite
     .prepare(
-      `INSERT INTO generations (id, user_id, template_id, duration_id, duration_seconds, credits_cost, upload_id, status, provider, refunded, created_at, updated_at)
+      `INSERT INTO arv_generations (id, user_id, template_id, duration_id, duration_seconds, credits_cost, upload_id, status, provider, refunded, created_at, updated_at)
        VALUES (?, ?, 't', 'short', 6, ?, 'upl', ?, 'mock', ?, ?, ?)`,
     )
     .run(row.id, row.userId, row.cost, row.status, row.refunded, iso(), iso())
 }
 
 function balance(userId: string) {
-  return (sqlite.prepare('SELECT credits FROM users WHERE id = ?').get(userId) as { credits: number }).credits
+  return (sqlite.prepare('SELECT credits FROM arv_users WHERE id = ?').get(userId) as { credits: number }).credits
 }
 
 function refundedFlag(id: string) {
-  return (sqlite.prepare('SELECT refunded FROM generations WHERE id = ?').get(id) as { refunded: number }).refunded
+  return (sqlite.prepare('SELECT refunded FROM arv_generations WHERE id = ?').get(id) as { refunded: number }).refunded
 }
 
 function hasRefundLedger(id: string) {
   return Boolean(
-    sqlite.prepare(`SELECT 1 AS ok FROM credit_ledger WHERE idempotency_key = ?`).get(`generation_refund:${id}`),
+    sqlite.prepare(`SELECT 1 AS ok FROM arv_credit_ledger WHERE idempotency_key = ?`).get(`generation_refund:${id}`),
   )
 }
 

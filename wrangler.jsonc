@@ -43,9 +43,13 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ai-rap-video-maynor",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
+      // Free-plan D1 create quota full (max 11): reuse existing hallowpaws-db.
+      // All tables/indexes prefixed `arv_`; wrangler ledger `arv_d1_migrations` (cf. skills-hub `skh_`).
+      // (maynorai-research-db was at daily row-read limit during migrate, so hallowpaws-db was chosen.)
+      "database_name": "hallowpaws-db",
+      "database_id": "f50e915e-e0cb-4b37-8237-42690399978d",
+      "migrations_dir": "migrations",
+      "migrations_table": "arv_d1_migrations"
     }
   ],
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "ai-rap-video-maynor-media" }],
@@ -71,5 +75,8 @@
   ],
   // Cloudflare Email Service（交易邮件、管理员提醒）。本地 dev / e2e 只模拟发送；不要加 "remote": true，否则会真的发信
   "send_email": [{ "name": "EMAIL" }],
-  "triggers": { "crons": ["*/5 * * * *"] }
+  // Free plan: max 5 cron triggers/account already used — skip cron on this staging Worker.
+  // Retention/expiry/alerts cron will need Workers Paid or freeing another schedule.
+  // "triggers": { "crons": ["*/5 * * * *"] }
+  "triggers": { "crons": [] }
 }

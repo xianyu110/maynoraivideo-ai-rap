@@ -17,7 +17,7 @@ const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString()
 const migrate = (from?: number, to?: number) => runMigrations(sqlite, from, to)
 
 function addUser(id: string) {
-  sqlite.prepare(`INSERT INTO users (id, email, credits, created_at) VALUES (?, ?, 0, ?)`).run(id, `${id}@example.com`, iso(0))
+  sqlite.prepare(`INSERT INTO arv_users (id, email, credits, created_at) VALUES (?, ?, 0, ?)`).run(id, `${id}@example.com`, iso(0))
 }
 
 // 同一到期时间按入账时间先后扣；错开 2ms，避免同一毫秒入账时按随机 id 排序
@@ -39,26 +39,26 @@ const spend = (userId: string, amount: number, key = `generation:${crypto.random
   run(ledgerStatements(asD1(), { userId, delta: -amount, reason: 'generation', idempotencyKey: key }))
 
 function balance(userId: string) {
-  return (sqlite.prepare('SELECT credits FROM users WHERE id = ?').get(userId) as { credits: number }).credits
+  return (sqlite.prepare('SELECT credits FROM arv_users WHERE id = ?').get(userId) as { credits: number }).credits
 }
 
 function grants(userId: string) {
   return sqlite
-    .prepare('SELECT source, ref_id AS refId, amount, remaining, expires_at AS expiresAt FROM credit_grants WHERE user_id = ? ORDER BY created_at, id')
+    .prepare('SELECT source, ref_id AS refId, amount, remaining, expires_at AS expiresAt FROM arv_credit_grants WHERE user_id = ? ORDER BY created_at, id')
     .all(userId) as Array<{ source: string; refId: string | null; amount: number; remaining: number; expiresAt: string | null }>
 }
 
 function ledger(userId: string) {
-  return sqlite.prepare('SELECT reason, delta FROM credit_ledger WHERE user_id = ? ORDER BY rowid').all(userId) as Array<{ reason: string; delta: number }>
+  return sqlite.prepare('SELECT reason, delta FROM arv_credit_ledger WHERE user_id = ? ORDER BY rowid').all(userId) as Array<{ reason: string; delta: number }>
 }
 
 // 不变式：流水之和 = 缓存余额 = 批次剩余之和
 function expectConsistent(userId: string) {
   const sums = sqlite
     .prepare(
-      `SELECT (SELECT COALESCE(SUM(delta), 0) FROM credit_ledger WHERE user_id = ?1) AS ledger,
-              (SELECT credits FROM users WHERE id = ?1) AS cached,
-              (SELECT COALESCE(SUM(remaining), 0) FROM credit_grants WHERE user_id = ?1) AS grants`,
+      `SELECT (SELECT COALESCE(SUM(delta), 0) FROM arv_credit_ledger WHERE user_id = ?1) AS ledger,
+              (SELECT credits FROM arv_users WHERE id = ?1) AS cached,
+              (SELECT COALESCE(SUM(remaining), 0) FROM arv_credit_grants WHERE user_id = ?1) AS grants`,
     )
     .get(userId) as { ledger: number; cached: number; grants: number }
   expect(sums.cached).toBe(sums.ledger)
@@ -68,7 +68,7 @@ function expectConsistent(userId: string) {
 function addFailedGeneration(userId: string, id: string, cost: number) {
   sqlite
     .prepare(
-      `INSERT INTO generations (id, user_id, template_id, duration_id, duration_seconds, credits_cost, upload_id, status, provider, refunded, created_at, updated_at)
+      `INSERT INTO arv_generations (id, user_id, template_id, duration_id, duration_seconds, credits_cost, upload_id, status, provider, refunded, created_at, updated_at)
        VALUES (?, ?, 't', 'short', 6, ?, 'upl', 'failed', 'mock', 1, ?, ?)`,
     )
     .run(id, userId, cost, iso(0), iso(0))
@@ -106,8 +106,8 @@ describe('积分批次', () => {
     expect(isCheckConstraintError(error)).toBe(true)
     expect(balance('u1')).toBe(5)
     expect(ledger('u1')).toEqual([{ reason: 'purchase', delta: 5 }])
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM credit_allocations').get()).toEqual({ n: 0 })
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM credit_guard').get()).toEqual({ n: 0 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM arv_credit_allocations').get()).toEqual({ n: 0 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM arv_credit_guard').get()).toEqual({ n: 0 })
   })
 
   it('已到期的批次不能用；扣费前先作废并记 expire 流水', async () => {
@@ -159,15 +159,15 @@ describe('积分批次', () => {
 
   it('没有扣费明细的旧任务退成一个永不过期的新批次；未失败的任务不退', async () => {
     addFailedGeneration('u1', 'gen_old', 6)
-    sqlite.prepare(`INSERT INTO credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, created_at) VALUES ('led_x', 'u1', 6, 'purchase', NULL, 'k', ?)`).run(iso(0))
-    sqlite.prepare(`INSERT INTO credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, created_at) VALUES ('led_y', 'u1', -6, 'generation', 'gen_old', 'generation:gen_old', ?)`).run(iso(0))
+    sqlite.prepare(`INSERT INTO arv_credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, created_at) VALUES ('led_x', 'u1', 6, 'purchase', NULL, 'k', ?)`).run(iso(0))
+    sqlite.prepare(`INSERT INTO arv_credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, created_at) VALUES ('led_y', 'u1', -6, 'generation', 'gen_old', 'generation:gen_old', ?)`).run(iso(0))
     await run(generationRefundStatements(asD1(), 'gen_old', 'provider_failed'))
     expect(grants('u1')).toEqual([{ source: 'generation_refund', refId: 'gen_old', amount: 6, remaining: 6, expiresAt: null }])
     expect(balance('u1')).toBe(6)
     expectConsistent('u1')
 
     addFailedGeneration('u1', 'gen_ok', 6)
-    sqlite.prepare(`UPDATE generations SET status = 'succeeded', refunded = 0 WHERE id = 'gen_ok'`).run()
+    sqlite.prepare(`UPDATE arv_generations SET status = 'succeeded', refunded = 0 WHERE id = 'gen_ok'`).run()
     await run(generationRefundStatements(asD1(), 'gen_ok', 'noop'))
     expect(balance('u1')).toBe(6)
     expect(ledger('u1')).toHaveLength(3)
@@ -205,8 +205,8 @@ describe('迁移 0009', () => {
     migrate(1, 8)
     addUser('u1')
     addUser('u0')
-    sqlite.prepare(`UPDATE users SET credits = 7 WHERE id = 'u1'`).run()
-    sqlite.prepare(`INSERT INTO credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, created_at) VALUES ('led_l', 'u1', 7, 'purchase', NULL, 'order:x', ?)`).run(iso(0))
+    sqlite.prepare(`UPDATE arv_users SET credits = 7 WHERE id = 'u1'`).run()
+    sqlite.prepare(`INSERT INTO arv_credit_ledger (id, user_id, delta, reason, ref_id, idempotency_key, created_at) VALUES ('led_l', 'u1', 7, 'purchase', NULL, 'order:x', ?)`).run(iso(0))
     migrate(9)
     expect(grants('u1')).toEqual([{ source: 'legacy', refId: null, amount: 7, remaining: 7, expiresAt: null }])
     expect(grants('u0')).toEqual([])
