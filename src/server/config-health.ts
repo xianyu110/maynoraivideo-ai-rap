@@ -43,7 +43,7 @@ const PAYMENT_SECRETS: Record<string, string[]> = {
   dodo: ['DODO_API_KEY', 'DODO_WEBHOOK_SECRET'],
   stripe: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'],
 }
-const VIDEO_SECRETS: Record<string, string[]> = { fal: ['FAL_KEY'], yir: ['YIR_API_KEY'], tryallapi: ['TRYALLAPI_API_KEY'] }
+const VIDEO_SECRETS: Record<string, string[]> = { tryallapi: ['TRYALLAPI_API_KEY'] }
 const MODERATION_SECRETS: Record<string, string[]> = { openai: ['OPENAI_API_KEY'], none: [] }
 const PLACEHOLDER_HOSTS = /(^|\.)(example\.(com|org|net)|localhost)$|^127\.|SUBDOMAIN/i
 
@@ -142,7 +142,7 @@ export function checkConfig(input: ConfigInput): ConfigIssue[] {
 
   const video = vars('VIDEO_PROVIDER')
   if (video === 'mock') error('VIDEO_PROVIDER', 'VIDEO_PROVIDER=mock：生产环境提交生成会返回 503')
-  else if (!VIDEO_SECRETS[video]) error('VIDEO_PROVIDER', `未知的 VIDEO_PROVIDER=${video || '(空)'}，可选 fal、yir、tryallapi`)
+  else if (!VIDEO_SECRETS[video]) error('VIDEO_PROVIDER', `未知的 VIDEO_PROVIDER=${video || '(空)'}，可选 tryallapi（默认）或 mock（仅非 production）`)
   else requireSecrets(VIDEO_SECRETS[video], `${video} 视频生成`)
 
   const moderation = vars('MODERATION_PROVIDER')

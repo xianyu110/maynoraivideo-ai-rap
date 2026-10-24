@@ -2,7 +2,6 @@
 interface Env {
   TURNSTILE_SECRET_KEY?: string
   OPENAI_API_KEY?: string
-  YIR_API_KEY?: string
   PAYMENT_NOTIFY_WEBHOOK_URL?: string
   STRIPE_SECRET_KEY?: string
   STRIPE_WEBHOOK_SECRET?: string

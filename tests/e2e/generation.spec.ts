@@ -62,7 +62,7 @@ test('生成失败自动退回积分，失败任务没有视频', async ({ reque
   expect((await request.get(`/api/generations/${generation.id}/video`)).status()).toBe(404)
 })
 
-// fal webhook 只是“该去查一下”的信号，会和定时轮询同时处理同一个任务：只能一路落库，另一路不能删掉已落库的成片
+// tryallapi webhook 只是“该去查一下”的信号，会和定时轮询同时处理同一个任务：只能一路落库，另一路不能删掉已落库的成片
 test('并发轮询只落库一次、成片不被误删；后台记录服务商成本与毛利，未出片的失败任务不记成本', async ({ request, page }) => {
   await devLogin(request, uniqueEmail('race'))
   await buyPackage(request, 'starter')

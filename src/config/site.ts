@@ -13,11 +13,11 @@ export const LOCALE_META: Record<Locale, { tag: string; ogLocale: string; name: 
 }
 
 export const site = {
-  keyword: 'Neon Shuffle',
-  brandName: 'Neon Shuffle AI',
-  logoMark: 'NS',
-  domain: 'example.com',
-  supportEmail: 'support@example.com',
+  keyword: 'AI Rap Video',
+  brandName: 'AI Rap Video',
+  logoMark: 'AR',
+  domain: 'ai-rap-video.asia',
+  supportEmail: 'bgnwd15@gmail.com',
   // 社媒平台名称（用于 “Viral on TikTok” 之类标签）
   trendPlatform: 'TikTok',
   ogImage: '/og.png',
@@ -25,17 +25,17 @@ export const site = {
   // 生成模板：provider 输出时长 = 源视频时长，所以每个时长档位各有一段剪好的源视频。
   // 源视频上传到 R2 的 templates/<文件名>，由 /media/templates/<文件名> 公开提供给 provider 拉取。
   template: {
-    id: 'neon-shuffle-v1',
+    id: 'ai-rap-video-v1',
     aspectRatio: '9:16',
     fullSeconds: 18,
   },
 
   // 首页展示素材（public/demo/）。换成真实素材时必须拥有授权，credit 写原作者，例如 '@handle · TikTok'。
   examples: {
-    original: { video: '/demo/original.mp4', poster: '/demo/original.jpg', credit: 'Demo clip · original' },
+    original: { video: '/demo/original.mp4', poster: '/demo/original.jpg', credit: 'Demo · AI Rap Video template' },
     aiVersions: [
-      { video: '/demo/ai1.mp4', poster: '/demo/ai1.jpg', credit: 'Demo clip · AI render' },
-      { video: '/demo/ai2.mp4', poster: '/demo/ai2.jpg', credit: 'Demo clip · AI render' },
+      { video: '/demo/ai1.mp4', poster: '/demo/ai1.jpg', credit: 'Demo · AI rap lip-sync' },
+      { video: '/demo/ai2.mp4', poster: '/demo/ai2.jpg', credit: 'Demo · AI rap lip-sync' },
     ],
     madeWith: { photo: '/demo/sample-photo.jpg', video: '/demo/madeWith.mp4', poster: '/demo/madeWith.jpg' },
     // “创意”区块：每条 = 一张示例照片 + 一段成片
@@ -46,31 +46,13 @@ export const site = {
     ],
   },
 
-  // 视频模型，服务商由 VIDEO_PROVIDER 选择。换模型时同时检查 src/server/video/ 下对应文件的入参与出参。
+  // 视频模型，服务商由 VIDEO_PROVIDER 选择（tryallapi 默认；mock 仅本地/e2e）。换模型时同时检查 src/server/video/ 下对应文件的入参与出参。
   video: {
-    // fal.ai queue API（默认）
-    falModel: 'fal-ai/wan/v2.2-14b/animate/replace',
-    resolution: '480p',
-    // 成本估算，只用于后台毛利；实际扣费以 fal 账单为准。换模型、分辨率或源视频帧率时同步更新。
-    // fal 按帧计费：16 帧 = 1 个“视频秒”，480p $0.04/视频秒（https://fal.ai/models/fal-ai/wan/v2.2-14b/animate/replace）
-    costCentsPerVideoSecond: 4,
-    sourceFps: 24,
-    // yir.ai 网关（可选，VIDEO_PROVIDER=yir）：照片 + 源视频走 Kling Motion Control。prompt 按热词写清要保留什么。
-    yir: {
-      model: 'klingai/kling-2.6',
-      prompt: 'The person in the reference image performs the exact moves from the reference video. Keep their face, hair and outfit.',
-      resolution: '720p',
-      // 成本估算（美分/秒），只在出片时 yir 账单还没结算时用。按参考视频秒数计费，以 https://yir.ai/models 当前报价为准
-      costCentsPerSecond: 7,
-      // 用户照片会经过哪些上游渠道。null = 按 API Key 绑定的 Routing Profile 选，失败可换渠道；
-      // 填渠道 ID（如 ['official'] 只走 Kling 官方）则只在这些渠道里选，全部失败时任务失败。隐私政策要写明实际经过的渠道
-      routingOnly: null as readonly string[] | null,
-    },
-    // TryAllAPI（VIDEO_PROVIDER=tryallapi）：聚合站模型名以控制台「模型广场」为准，例如 aigc-video-hailuo / sora-2
+    // TryAllAPI（默认，VIDEO_PROVIDER=tryallapi）：聚合站模型名以控制台「模型广场」为准，例如 aigc-video-hailuo / sora-2
     tryallapi: {
       model: 'aigc-video-hailuo',
       prompt:
-        'The person in the reference image performs the exact dance moves from the viral template video. Keep their face, hair, body shape and outfit identical. Smooth motion, vertical 9:16.',
+        'The person in the reference image lip-syncs and performs the exact rap moves from the viral AI rap video template. Keep their face, hair, body shape and outfit identical. Clear mouth motion, smooth motion, vertical 9:16.',
       resolution: '720p',
       size: '720x1280',
       // 估算成本（美分/秒），只用于后台毛利；实际以 TryAllAPI 账单为准
@@ -83,18 +65,18 @@ export const site = {
   },
 
   durations: [
-    { id: 'short', seconds: 6, credits: 6, source: 'neon-shuffle-v1-6s.mp4' },
-    { id: 'medium', seconds: 12, credits: 12, source: 'neon-shuffle-v1-12s.mp4' },
-    { id: 'full', seconds: 18, credits: 18, source: 'neon-shuffle-v1-18s.mp4', isFull: true },
+    { id: 'short', seconds: 6, credits: 6, source: 'ai-rap-video-v1-6s.mp4' },
+    { id: 'medium', seconds: 12, credits: 12, source: 'ai-rap-video-v1-12s.mp4' },
+    { id: 'full', seconds: 18, credits: 18, source: 'ai-rap-video-v1-18s.mp4', isFull: true },
   ],
 
   // 积分包：一次性购买，买的积分永不过期（赠送积分可以设有效期，扣费时先扣快到期的）。价格用于展示与订单记录，实际收费以支付商后台为准。
   // 可选 anchorPriceCents：划线原价，价格卡显示原价和“Save X%”。只能填这个套餐真实卖过的价格
   // （欧盟要求以降价前 30 天内的最低价为准），不能编一个从没卖过的高价；没有就不填
   packages: [
-    { id: 'starter', credits: 20, priceCents: 990, currency: 'USD' },
-    { id: 'party', credits: 60, priceCents: 1990, currency: 'USD', highlight: true },
-    { id: 'squad', credits: 100, priceCents: 2990, currency: 'USD' },
+    { id: 'starter', credits: 500, priceCents: 888, currency: 'USD' }, // Single · From $8.88 · one 720p
+    { id: 'party', credits: 1500, priceCents: 1699, currency: 'USD', highlight: true }, // Popular
+    { id: 'squad', credits: 5000, priceCents: 2990, currency: 'USD' }, // Creator
   ],
 
   // 订阅：按月或按年自动续费，每月发 credits 积分，当期结束时作废（不累积）；年付一次收一年的钱，积分按月发放。
@@ -102,7 +84,7 @@ export const site = {
   // 开关 subscriptionsEnabled：false 时不再卖新订阅（定价页、条款、退款政策和 FAQ 里的订阅内容一起隐藏，下单接口拒绝套餐），
   // 已有订阅照常续费、退款，账单页仍能取消和进门户；这时要保留 *_PRODUCTS 里套餐的商品，支付商 webhook 也别退订订阅事件。
   // 使用手册见 docs/subscriptions.md
-  subscriptionsEnabled: true as boolean,
+  subscriptionsEnabled: false as boolean,
   plans: [
     { id: 'monthly', interval: 'month', credits: 60, priceCents: 1490, currency: 'USD' },
     { id: 'yearly', interval: 'year', credits: 60, priceCents: 14900, currency: 'USD', highlight: true },
@@ -145,16 +127,16 @@ export const site = {
   // trend、howTo 两篇被首页直接链接，不要删。related 不填时推荐其余文章里最近更新的。
   // 日期写进 Article 的 datePublished/dateModified、页面上的“最后更新”和 sitemap lastmod，改正文时同步改 updatedAt
   articles: [
-    { key: 'trend', slug: 'neon-shuffle-ai-trend', publishedAt: '2026-10-20', updatedAt: '2026-10-22' },
-    { key: 'howTo', slug: 'how-to-make-neon-shuffle-ai-video', publishedAt: '2026-10-20', updatedAt: '2026-10-20' },
+    { key: 'trend', slug: 'ai-rap-video-ai-trend', publishedAt: '2026-10-24', updatedAt: '2026-10-24' },
+    { key: 'howTo', slug: 'how-to-make-ai-rap-video', publishedAt: '2026-10-24', updatedAt: '2026-10-24' },
   ],
 
   seo: {
     // 长尾词：不输出 meta keywords（Google 不用），由 npm run seo:check 检查首页正文是否覆盖
-    secondaryKeywords: ['Neon Shuffle AI', 'Neon Shuffle video', 'Neon Shuffle trend', 'AI dance video'],
+    secondaryKeywords: ['AI Rap Video AI', 'AI Rap Video video', 'AI Rap Video trend', 'AI rap video', 'lip-sync rap', 'AI dance video', 'From $8.88'],
     // 首次上线日期与站点页面（首页、价格、法律页等）最近一次内容更新日期：首页视频 uploadDate、sitemap lastmod。文章用各自的日期
-    publishedAt: '2026-10-20',
-    updatedAt: '2026-10-20',
+    publishedAt: '2026-10-24',
+    updatedAt: '2026-10-24',
     // Search Console / Bing Webmaster 选“HTML 标记”验证时填 content 值；用 DNS 验证则留空
     googleVerification: '',
     bingVerification: '',

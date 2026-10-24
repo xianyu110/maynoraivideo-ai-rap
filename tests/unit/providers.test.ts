@@ -19,12 +19,12 @@ describe('provider 选择', () => {
     expect(() => activePaymentProviderId(env({ APP_ENV: 'development', PAYMENT_PROVIDER: 'creem' }))).toThrow()
   })
 
-  it('生产环境正常选择 waffo / dodo / stripe / fal / yir / tryallapi', () => {
+  it('生产环境正常选择 waffo / dodo / stripe / tryallapi', () => {
     expect(activePaymentProviderId(env({ APP_ENV: 'production', PAYMENT_PROVIDER: 'waffo' }))).toBe('waffo')
     expect(activePaymentProviderId(env({ APP_ENV: 'production', PAYMENT_PROVIDER: 'dodo' }))).toBe('dodo')
     expect(activePaymentProviderId(env({ APP_ENV: 'production', PAYMENT_PROVIDER: 'stripe' }))).toBe('stripe')
-    expect(activeVideoProviderId(env({ APP_ENV: 'production', VIDEO_PROVIDER: 'fal' }))).toBe('fal')
-    expect(activeVideoProviderId(env({ APP_ENV: 'production', VIDEO_PROVIDER: 'yir' }))).toBe('yir')
     expect(activeVideoProviderId(env({ APP_ENV: 'production', VIDEO_PROVIDER: 'tryallapi' }))).toBe('tryallapi')
+    expect(() => activeVideoProviderId(env({ APP_ENV: 'production', VIDEO_PROVIDER: 'fal' }))).toThrow(/VIDEO_PROVIDER/)
+    expect(() => activeVideoProviderId(env({ APP_ENV: 'production', VIDEO_PROVIDER: 'yir' }))).toThrow(/VIDEO_PROVIDER/)
   })
 })

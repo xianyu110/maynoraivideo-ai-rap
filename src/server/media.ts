@@ -24,7 +24,7 @@ export async function verifyUploadSignature(env: Env, uploadId: string, exp: str
   return constantTimeEqual(expected, sig)
 }
 
-// fal webhook 回调地址里带的 token，防止伪造回调触发无意义的轮询
+// 视频服务商 webhook 回调地址里带的 token，防止伪造回调触发无意义的轮询
 export async function jobToken(env: Env, generationId: string) {
   return base64Url(await hmacSha256(signingSecret(env), `job:${generationId}`))
 }

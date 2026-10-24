@@ -113,7 +113,7 @@ test('跨站 POST 被 CSRF 拦下；未签名的支付与生成回调被拒', as
   expect(noOrigin.status()).toBe(403)
 
   const forged = JSON.stringify({ type: 'payment.succeeded', data: { metadata: { orderId: 'smoke' } } })
-  for (const path of ['/api/webhooks/waffo', '/api/webhooks/dodo', '/api/webhooks/stripe', '/api/webhooks/fal', '/api/webhooks/yir', '/api/webhooks/tryallapi']) {
+  for (const path of ['/api/webhooks/waffo', '/api/webhooks/dodo', '/api/webhooks/stripe', '/api/webhooks/tryallapi']) {
     const res = await request.post(path, { data: forged, headers: { 'content-type': 'application/json' } })
     expect(res.status(), path).toBe(401)
     expect(await res.json()).toEqual({ error: 'invalid_webhook' })

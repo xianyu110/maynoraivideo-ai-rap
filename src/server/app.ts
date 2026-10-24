@@ -790,9 +790,9 @@ app.post('/api/webhooks/stripe', async (c) => {
   return c.json({ received: true, ...result })
 })
 
-// 视频服务商完成回调（fal、yir、tryallapi）：只当作“立即轮询”的信号，真实结果由 jobs.ts 用 API key 拉取，
+// 视频服务商完成回调（tryallapi）：只当作“立即轮询”的信号，真实结果由 jobs.ts 用 API key 拉取，
 // 所以只校验地址里的任务 token，不验上游签名头
-for (const provider of ['fal', 'yir', 'tryallapi']) {
+for (const provider of ['tryallapi']) {
   app.post(`/api/webhooks/${provider}`, async (c) => {
     const generationId = c.req.query('gen') ?? ''
     const token = c.req.query('token') ?? ''
@@ -953,7 +953,7 @@ app.post('/api/dev/dead-letter', async (c) => {
   return c.json({ failed: await handleDeadLetter(c.env, { kind: 'poll', generationId }) })
 })
 
-// 本地 e2e：让当前用户一个 hang 的 mock 任务出片，并同时跑 polls 次轮询（模拟 fal webhook 与定时轮询撞在一起）
+// 本地 e2e：让当前用户一个 hang 的 mock 任务出片，并同时跑 polls 次轮询（模拟 tryallapi webhook 与定时轮询撞在一起）
 app.post('/api/dev/mock-finish', async (c) => {
   if (!isLocalDevRequest(c)) throw new ApiError(404, 'not_found')
   const user = requireUser(c)

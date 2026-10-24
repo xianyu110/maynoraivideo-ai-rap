@@ -87,7 +87,7 @@ describe('5xx 错误详情', () => {
   })
 })
 
-// 上传图片的签名 URL 和 fal 回调 token 都用 SESSION_SECRET 做 HMAC；.dev.vars.example 随模板公开，里面的占位值人人都知道
+// 上传图片的签名 URL 和视频 webhook 回调 token 都用 SESSION_SECRET 做 HMAC；.dev.vars.example 随模板公开，里面的占位值人人都知道
 describe('签名密钥', () => {
   const example = /^SESSION_SECRET=(.*)$/m.exec(readFileSync('.dev.vars.example', 'utf8'))?.[1]?.trim() ?? ''
 

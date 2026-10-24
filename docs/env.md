@@ -26,7 +26,7 @@
 | `DODO_PRODUCTS` | 同上 | 用 Dodo 时 | `scripts/dodo-setup.mjs` 可以生成 |
 | `STRIPE_ENVIRONMENT` | `test`、`live` | 用 Stripe 时 | 应与 `sk_test_` / `sk_live_` 密钥一致；production 下仍是 test 会告警 |
 | `STRIPE_PRODUCTS` | JSON，如 `{"starter":"price_xxx"}` | 用 Stripe 时 | 每个积分包和订阅套餐对应的 **Price ID**（`price_…`，不是 Product ID）。在 Stripe Dashboard → Products 创建商品与价格后填入 |
-| `VIDEO_PROVIDER` | `fal`、`yir`、`tryallapi`、`mock` | 是 | 模型和单价在 `site.video` 里配置；yir → `site.video.yir`，tryallapi → `site.video.tryallapi` |
+| `VIDEO_PROVIDER` | `tryallapi`（默认）、`mock`（仅本地/e2e） | 是 | 模型和单价在 `site.video.tryallapi` 里配置 |
 | `MODERATION_PROVIDER` | `openai`、`none`、`mock` | 是 | 上传图片的审核方式。`none` 不审核，检查时给出警告 |
 | `GOOGLE_CLIENT_ID` | OAuth Client ID | 是 | 站点只有 Google 登录，留空就没人能登录 |
 | `TURNSTILE_SITE_KEY` | 站点密钥 | 否 | 留空则留言和举报表单不做人机校验，检查时给出警告 |
@@ -42,8 +42,6 @@
 | `WAFFO_MERCHANT_ID`、`WAFFO_PRIVATE_KEY` | `PAYMENT_PROVIDER=waffo` | 私钥支持 PKCS1 和 PKCS8，可以写成一行，换行用 `\n`。验签公钥已内置在代码里 |
 | `DODO_API_KEY`、`DODO_WEBHOOK_SECRET` | `PAYMENT_PROVIDER=dodo` | API 密钥需要的权限见 README 的“第三方回调地址”；卖订阅还要 Subscriptions 读写和 Customers 写入，见 [subscriptions.md](subscriptions.md) |
 | `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET` | `PAYMENT_PROVIDER=stripe` | 可选 secret，类型在 `src/env.d.ts`。Secret Key 用 `sk_test_` / `sk_live_`；Webhook Signing Secret 用 `whsec_…`（Dashboard → Developers → Webhooks） |
-| `FAL_KEY` | `VIDEO_PROVIDER=fal` | |
-| `YIR_API_KEY` | `VIDEO_PROVIDER=yir` | 可选 secret，类型声明在 `src/env.d.ts`。建议在 yir Console 给这个 Key 设月度额度，见 README 的“视频服务商” |
 | `TRYALLAPI_API_KEY` | `VIDEO_PROVIDER=tryallapi` | 可选 secret。在 https://tryallapi.com/console/token 创建。可选 `TRYALLAPI_BASE_URL`（默认 `https://tryallapi.com`） |
 | `OPENAI_API_KEY` | `MODERATION_PROVIDER=openai` | 可选 secret，类型声明在 `src/env.d.ts` |
 | `TURNSTILE_SECRET_KEY` | 配了 `TURNSTILE_SITE_KEY` | 同上 |

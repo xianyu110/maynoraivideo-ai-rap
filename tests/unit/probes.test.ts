@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { site } from '#/config/site'
+import { sellingPlans, site } from '#/config/site'
 import { runProbe } from '#/server/probes'
 import type { UserRow } from '#/server/types'
 import { kvShim } from './d1-sqlite'
 
 const admin = { id: 'usr_admin', email: 'admin@example.com', role: 'admin' } as UserRow
 const DODO_KEY = 'dodo_test_key_1234567890'
-// 积分包和订阅套餐都要有商品
-const ITEMS = [...site.packages, ...site.plans]
+// 与 probes.ts 一致：订阅关闭时只探测积分包
+const ITEMS = [...site.packages, ...sellingPlans]
 const DODO_PRODUCTS = JSON.stringify(Object.fromEntries(ITEMS.map((pack) => [pack.id, `pdt_${pack.id}`])))
 
 type Reply = { status?: number; body?: unknown }
@@ -85,38 +85,38 @@ describe('支付探测', () => {
 })
 
 describe('视频服务商探测', () => {
-  it('fal：余额充足 ok，低于 5 美元提示；403（Key 没有 billing 权限）只提示，401 fail', async () => {
-    const env = { VIDEO_PROVIDER: 'fal', FAL_KEY: 'fal_key_abcdefgh' }
-    const calls = stubFetch({ 'api.fal.ai/v1/account/billing': { body: { credits: { current_balance: 42.5, currency: 'USD' } } } })
-    expect(await probe('video', env)).toMatchObject({ status: 'ok', message: '鉴权正常，余额 42.50 USD' })
-    expect(calls[0]).toEqual({ url: 'https://api.fal.ai/v1/account/billing?expand=credits', auth: 'Key fal_key_abcdefgh' })
+  it('tryallapi：401/403 fail；其它 4xx 视为鉴权正常；缺 key fail；不支持的 provider fail', async () => {
+    const env = { VIDEO_PROVIDER: 'tryallapi', TRYALLAPI_API_KEY: 'tryall_key_abcdefgh' }
+    const calls = stubFetch({ 'tryallapi.com/v1/video/generations/probe_health_check': { status: 404, body: { error: 'not found' } } })
+    const ok = await probe('video', env)
+    expect(ok).toMatchObject({ status: 'ok', provider: 'tryallapi' })
+    expect(ok.message).toContain('鉴权正常')
+    expect(calls[0]?.auth).toBe('Bearer tryall_key_abcdefgh')
 
-    stubFetch({ 'api.fal.ai': { body: { credits: { current_balance: 1.2 } } } })
-    expect((await probe('video', env)).status).toBe('warn')
-    stubFetch({ 'api.fal.ai': { status: 403 } })
-    expect((await probe('video', env)).message).toContain('billing:usage:read')
-    stubFetch({ 'api.fal.ai': { status: 401 } })
-    expect(await probe('video', env)).toMatchObject({ status: 'fail', message: 'FAL_KEY 无效' })
-  })
-
-  it('yir：查余额接口，余额偏低提示；读不到余额只提示', async () => {
-    const env = { VIDEO_PROVIDER: 'yir', YIR_API_KEY: 'yir_key_abcdefgh' }
-    const calls = stubFetch({ 'gateway.yir.ai/v1/balance': { body: { available_amount: '3.10', currency: 'USD' } } })
-    expect(await probe('video', env)).toMatchObject({ status: 'warn', provider: 'yir' })
-    expect(calls[0]?.auth).toBe('Bearer yir_key_abcdefgh')
-    stubFetch({ 'gateway.yir.ai': { body: {} } })
-    expect(await probe('video', env)).toMatchObject({ status: 'warn', message: '鉴权正常，但读不到余额' })
-    expect(await probe('video', { VIDEO_PROVIDER: 'yir' })).toMatchObject({ status: 'fail', message: 'YIR_API_KEY 未配置' })
+    stubFetch({ 'tryallapi.com': { status: 401 } })
+    expect(await probe('video', env)).toMatchObject({ status: 'fail', message: expect.stringMatching(/无效|无权/) })
+    stubFetch({ 'tryallapi.com': { status: 403 } })
+    expect(await probe('video', env)).toMatchObject({ status: 'fail' })
+    stubFetch({ 'tryallapi.com': { status: 500 } })
+    expect(await probe('video', env)).toMatchObject({ status: 'fail', message: expect.stringContaining('500') })
+    expect(await probe('video', { VIDEO_PROVIDER: 'tryallapi' })).toMatchObject({ status: 'fail', message: 'TRYALLAPI_API_KEY 未配置' })
+    expect(await probe('video', { VIDEO_PROVIDER: 'fal' })).toMatchObject({ status: 'fail' })
+    expect(await probe('video', { VIDEO_PROVIDER: 'yir' })).toMatchObject({ status: 'fail' })
   })
 
   it('上游报错里出现的密钥值被替换掉', async () => {
-    const key = 'fal_secret_value_123'
+    const key = 'tryall_secret_value_123'
     vi.stubGlobal('fetch', async () => {
-      throw new Error(`connect failed for Key ${key} (OPENAI ${'sk-other-secret'})`)
+      throw new Error(`connect failed for Bearer ${key} (OPENAI ${'sk-other-secret'})`)
     })
-    const result = await probe('video', { VIDEO_PROVIDER: 'fal', FAL_KEY: `${key}\n`, OPENAI_API_KEY: 'sk-other-secret', SITE_URL: 'http://localhost' })
+    const result = await probe('video', {
+      VIDEO_PROVIDER: 'tryallapi',
+      TRYALLAPI_API_KEY: `${key}\n`,
+      OPENAI_API_KEY: 'sk-other-secret',
+      SITE_URL: 'http://localhost',
+    })
     expect(result.status).toBe('fail')
-    expect(result.message).toBe('connect failed for Key *** (OPENAI ***)')
+    expect(result.message).toBe('connect failed for Bearer *** (OPENAI ***)')
   })
 })
 

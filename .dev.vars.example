@@ -20,11 +20,7 @@ DODO_WEBHOOK_SECRET=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 
-# --- Video: set VIDEO_PROVIDER in wrangler.jsonc ---
-# fal.ai
-FAL_KEY=
-# yir.ai (VIDEO_PROVIDER=yir)
-YIR_API_KEY=
+# --- Video: VIDEO_PROVIDER=tryallapi (default) or mock (local/e2e only) ---
 # TryAllAPI (VIDEO_PROVIDER=tryallapi) https://tryallapi.com/console/token
 TRYALLAPI_API_KEY=
 # Optional; default https://tryallapi.com

@@ -45,8 +45,8 @@ describe('evaluateHealth', () => {
     const review = evaluateHealth(stats({ paymentReview: { count: 1, latest: 'dodo payment.succeeded mismatch ord_1: paid 1 < price 990 USD' } }))[0]
     expect(review).toMatchObject({ kind: 'payment_review', count: 1, windowMinutes: 1440 })
     // 服务商余额不足：1 个就告警，不等失败率（40 个里只失败 1 个也报）
-    const account = evaluateHealth(stats({ providerAccount: { count: 1, detail: 'YIR_INSUFFICIENT_BALANCE ×1' } }))
-    expect(account).toEqual([{ kind: 'provider_account', count: 1, total: null, windowMinutes: 60, detail: 'YIR_INSUFFICIENT_BALANCE ×1' }])
+    const account = evaluateHealth(stats({ providerAccount: { count: 1, detail: 'tryallapi_submit_402 ×1' } }))
+    expect(account).toEqual([{ kind: 'provider_account', count: 1, total: null, windowMinutes: 60, detail: 'tryallapi_submit_402 ×1' }])
     const webhook = evaluateHealth(stats({ webhookFailures: { count: 2, latest: 'dodo payment.succeeded: boom' } }))[0]
     expect(webhook).toMatchObject({ kind: 'payment_webhook', count: 2, detail: 'dodo payment.succeeded: boom' })
   })

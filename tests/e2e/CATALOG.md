@@ -127,7 +127,7 @@ e2e 跑在本地 dev server 上，支付、视频、审核服务商都是 mock�
 - `data-management.spec.ts` › `后台用户：付费 / 封禁筛选、按积分排序、详情汇总与审计`
   - 非法的排序参数回退到默认排序，不会拼进 SQL。
 - `settings.spec.ts` › `运营设置只有管理员能读写；未知参数、越界值整体拒绝；未知探测目标 404`
-  - 未登录 401、普通用户 403（读、写、测试连接）；`FAL_KEY` 这类未知参数和越界值返回 400 `invalid_setting`，同一次提交里合法的项也不保存。
+  - 未登录 401、普通用户 403（读、写、测试连接）；`UNKNOWN_SECRET` 这类未知参数和越界值返回 400 `invalid_setting`，同一次提交里合法的项也不保存。
 
 ### CSRF 与开发入口
 
@@ -254,7 +254,7 @@ e2e 跑在本地 dev server 上，支付、视频、审核服务商都是 mock�
 - 邀请奖励：邀请码规范化、IP 加盐哈希（IPv6 按 /64）；邀请人被封禁或注销、30 天奖励上限（已回收的也计入）；同一被邀请人两单并发入账只发一次、两笔退款并发只回收一次、邀请人已花掉的最多扣到 0（`referrals.test.ts`）。
 - 订阅：日历月相加（月末、闰年）、年付补发窗口与跳过已过期的月份；首付、续费订单号派生、续费金额核对、逾期恢复；首付不带周期时状态事件校正周期，当期积分的到期时间一起对齐；状态事件按发生时间防乱序、到期取消且当期结束后不再算有效订阅；退款只回收订阅批次并停止补发；Dodo、Waffo 订阅事件的映射（`subscriptions.test.ts`）。
 - 运营参数：提交校验（未知字段、越界、类型、长度）与公告规范化、存值合并时丢弃非法值、KV 缓存未命中读 D1 并回写、坏 JSON 行忽略；每日上限按 UTC 自然日计数、超出时整个 batch 回滚；邀请奖励暂停期间付款的首单记为 `paused`，恢复后第二单不补发（`settings.test.ts`、`referrals.test.ts`）。
-- 测试连接：Dodo 逐个套餐核对商品与价格（低于 site.ts 为失败、高于或币种不同为提示）、Key 无效与商品不存在；fal 和 yir 的余额与权限分支；R2、KV 不留探测数据；说明文字里的密钥值被替换（`probes.test.ts`）。Dodo、Waffo 的探测另用 test 凭据实测过一次。
+- 测试连接：Dodo 逐个套餐核对商品与价格（低于 site.ts 为失败、高于或币种不同为提示）、Key 无效与商品不存在；tryallapi 鉴权探测分支；R2、KV 不留探测数据；说明文字里的密钥值被替换（`probes.test.ts`）。Dodo、Waffo 的探测另用 test 凭据实测过一次。
 - 第三方校验：Turnstile 的启用与失败分支，OpenAI 审核接口异常时拒绝（fail closed）（`compliance.test.ts`）。
 - 发信重试：临时错误退避、永久错误不重试，邮件头注入（`email.test.ts`）。
 - 生产开关：生产和预发拒绝 mock（`providers.test.ts`）、弱 `SESSION_SECRET`（`security.test.ts`）、上线配置与 doctor（`config-health.test.ts`）、预发配置与 robots（`staging.test.ts`）。
@@ -269,13 +269,13 @@ e2e 跑在本地 dev server 上，支付、视频、审核服务商都是 mock�
 | --- | --- | --- | --- |
 | 真实支付商的 webhook 和退款 | 需要公网隧道和支付商后台的 webhook 地址，Waffo 退款还要等十几分钟 | 验签与映射的单元测试；sandbox e2e 无隧道时验证收银台、回跳和查单入账；webhook 模式手动跑 | 发版前按需跑 `SANDBOX_WEBHOOK=1` |
 | 真实支付商的订阅续费、扣款失败，Dodo 的取消与撤销 | test 模式触发不了续费和扣款失败（要等一个计费周期）；Dodo 的取消要 API 密钥有 Subscriptions 写入，模板的 test 密钥还没有 | 首付、激活、当月积分、门户和 Waffo 的取消由 sandbox 订阅用例覆盖（2026-10-21 手动跑过）；续费和扣款失败有按文档构造的映射单元测试，e2e 用 mock 订阅事件走同一套入账逻辑 | 补上密钥权限后重跑 Dodo 订阅用例；第一个热词站上线后观察第一次真实续费 |
-| 真实视频生成和 `/api/webhooks/fal`、`/api/webhooks/yir` 的成功回调 | 需要 `FAL_KEY` 或 `YIR_API_KEY`，每次调用要付费；e2e 用 mock 服务商，靠轮询完成 | yir 的提交、查询、错误映射和实际成本有 provider 契约单元测试（`yir.test.ts`，按 yir 文档构造响应）；smoke 巡检检查未签名回调返回 401 | 第一个热词站选定服务商后用真实 key 跑一单 |
+| 真实视频生成和 `/api/webhooks/tryallapi` 的成功回调 | 需要 `TRYALLAPI_API_KEY`，每次调用要付费；e2e 用 mock 服务商，靠轮询完成 | tryallapi 有 provider 契约单元测试（`tryallapi.test.ts`）；smoke 巡检检查未签名回调返回 401 | 配好真实 key 后跑一单 |
 | 真实发信与投递 | 本地 `send_email` binding 只模拟发送 | e2e 断言发件箱记录；单元测试覆盖渲染和重试 | 线上验证随第一个热词站 |
 | Google OAuth 与 One Tap 登录 | 需要真实 Google 账号，e2e 用 dev 登录 | 单元测试覆盖跳转校验、PKCE、nonce 和按 `sub` 绑定 | 线上验证随第一个热词站 |
 | Turnstile 浏览器端校验 | 需要真实站点密钥 | 服务端校验的单元测试 | 线上验证 |
 | OpenAI 图片审核的真实调用 | 需要 `OPENAI_API_KEY` | e2e 用 mock 拒绝；单元测试覆盖响应解析和失败时拒绝 | 线上验证 |
 | 运营参数在线上的生效延迟 | 本地 KV 没有边缘缓存，保存后立即生效；线上 `cacheTtl` 60 秒的实际表现要在部署后看 | 保存时直接刷新 KV；单元测试覆盖缓存读写 | 线上验证随第一个热词站 |
-| fal、yir、OpenAI 的测试连接 | 需要真实 key | `probes.test.ts` 按文档构造响应 | 第一个热词站配好 key 后在后台点一次 |
+| tryallapi、OpenAI 的测试连接 | 需要真实 key | `probes.test.ts` 按文档构造响应 | 配好 key 后在后台点一次 |
 | 限流（`UPLOAD_LIMITER`、`GENERATE_LIMITER`、`AUTH_LIMITER`） | 要在 60 秒内打满额度；本地 binding 的计数是否和线上一致没有核实过 | 无 | 线上手工验证 |
 | Queues 真实重试与死信、Cron 真实触发 | 真实死信要重试 10 次（约 35 分钟） | 用 `/api/dev/dead-letter`、`/api/dev/sweep`、`/api/dev/health-check` 等模拟 | 无 |
 | 支付争议与拒付 | test 模式无法触发 | 不认识的事件记为 ignored（单元测试） | 遇到时再补 |

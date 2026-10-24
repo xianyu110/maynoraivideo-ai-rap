@@ -22,7 +22,7 @@ export function en(s: S) {
   return {
     meta: {
       // 首页 title 不加品牌后缀：品牌通常已含关键词，控制在 60 字符内（seo:check 会校验）
-      homeTitle: `${k} AI Video Generator from One Photo`,
+      homeTitle: `${k} — Lip-Sync Rap Video · From $8.88`,
       homeDescription: `Make a ${k} AI video from one photo in minutes. Same moves and framing, starring you. ${subs ? 'Buy credits or subscribe — failed renders refund automatically.' : 'Credits never expire; failed renders refund automatically.'}`,
       pricingTitle: `Pricing – ${b}`,
       pricingDescription: subs
@@ -59,12 +59,12 @@ export function en(s: S) {
       menu: 'Menu',
     },
     hero: {
-      title: `${k} AI Video Generator`,
-      subtitle: `Upload one selfie and step into the ${k} clip. Same choreography, timing and framing — you as the lead.`,
+      title: `${k} — Lip-Sync Rap from One Photo`,
+      subtitle: `Upload one photo and drop into a viral AI rap video. Lip-sync, timing and framing from the template — you as the lead. Independent fan tool — not CreateVision. From $8.88.`,
       badge: `Trending on ${s.trendPlatform}`,
       original: 'Original',
       aiVersion: 'AI version',
-      chips: ['Same choreography', 'Same framing', 'You as the lead'],
+      chips: ['Lip-sync rap', 'Same framing', 'From $8.88'],
       creditNote: 'Sample clips are placeholders made for this demo.',
     },
     generator: {

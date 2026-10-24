@@ -37,7 +37,7 @@ const NET_REVENUE = `COALESCE(paid_currency, currency) AS currency, SUM(CASE WHE
   SUM(COALESCE(paid_amount_cents, amount_cents) - refunded_amount_cents) AS cents,
   SUM(refunded_amount_cents) AS refunded_cents`
 
-// 每积分实收（美分，fal 按美元计费，所以只看 USD 订单）：未全额退款订单的实收减部分退款，除以未回收的积分。
+// 每积分实收（美分，视频按美元计费，所以只看 USD 订单）：未全额退款订单的实收减部分退款，除以未回收的积分。
 // 用于把生成消耗的积分折算成收入、算毛利；没有 USD 订单时为 null
 const revenuePerCredit = (db: D1Database) =>
   db.prepare(

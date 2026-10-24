@@ -165,19 +165,6 @@ function balanceOutcome(amount: number, currency: string, provider: string) {
 async function probeVideo(env: Env): Promise<Outcome> {
   const id = activeVideoProviderId(env)
   if (id === 'mock') return ok('mock 视频服务商，不调用外部接口')
-  if (id === 'fal') {
-    const key = cleanSecret(env.FAL_KEY)
-    if (!key) return fail('FAL_KEY 未配置')
-    const response = await fetch('https://api.fal.ai/v1/account/billing?expand=credits', { headers: { Authorization: `Key ${key}` } })
-    if (response.status === 401) return fail('FAL_KEY 无效')
-    // Key 有效但权限范围不含 billing:usage:read：不影响生成，只是查不到余额
-    if (response.status === 403) return warn('FAL_KEY 有效，但没有 billing:usage:read 权限，查不到余额（不影响生成）')
-    if (!response.ok) return fail(`查询余额返回 HTTP ${response.status}`)
-    const body = (await response.json().catch(() => null)) as { credits?: { current_balance?: unknown; currency?: unknown } } | null
-    const balance = Number(body?.credits?.current_balance)
-    if (!Number.isFinite(balance)) return warn('鉴权正常，但读不到余额')
-    return balanceOutcome(balance, String(body?.credits?.currency ?? 'USD'), ' fal ')
-  }
   if (id === 'tryallapi') {
     const key = cleanSecret(env.TRYALLAPI_API_KEY)
     if (!key) return fail('TRYALLAPI_API_KEY 未配置')
@@ -190,15 +177,7 @@ async function probeVideo(env: Env): Promise<Outcome> {
     if (response.status >= 500) return fail(`TryAllAPI 返回 HTTP ${response.status}`)
     return ok(`鉴权正常（${base}，模型 ${site.video.tryallapi.model}）；余额请在 tryallapi 控制台查看`)
   }
-  const key = cleanSecret(env.YIR_API_KEY)
-  if (!key) return fail('YIR_API_KEY 未配置')
-  const response = await fetch('https://gateway.yir.ai/v1/balance', { headers: { Authorization: `Bearer ${key}` } })
-  if (response.status === 401) return fail('YIR_API_KEY 无效')
-  if (!response.ok) return fail(`查询余额返回 HTTP ${response.status}`)
-  const body = (await response.json().catch(() => null)) as { available_amount?: unknown; currency?: unknown } | null
-  const available = Number(body?.available_amount)
-  if (!Number.isFinite(available)) return warn('鉴权正常，但读不到余额')
-  return balanceOutcome(available, String(body?.currency ?? 'USD'), ' yir ')
+  return fail(`不支持的 VIDEO_PROVIDER: ${id}`)
 }
 
 async function probeModeration(env: Env): Promise<Outcome> {

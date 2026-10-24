@@ -18,7 +18,7 @@ In scope: the code and configuration in this repository.
 Out of scope:
 
 - Sites built from this template. Report those to the site's operator.
-- Third-party services the template integrates with (Cloudflare, Google, fal.ai, Waffo, Dodo Payments, OpenAI).
+- Third-party services the template integrates with (Cloudflare, Google, TryAllAPI, Waffo, Dodo Payments, Stripe, OpenAI).
 - Problems that only occur when a deployment skips the production settings in the README, such as `APP_ENV` not set to `production`. If the code is supposed to refuse a setting but doesn't, that is in scope.
 
 ## Running a site from this template

@@ -49,8 +49,8 @@ test('运营设置只有管理员能读写；未知参数、越界值整体拒�
   expect((await post(request, '/api/admin/settings', { values: { maintenance: true } })).status()).toBe(403)
   expect((await post(request, '/api/admin/probes/storage', {})).status()).toBe(403)
 
-  const unknown = await json<{ error: string; message: string }>(post(admin, '/api/admin/settings', { values: { signupBonusCredits: 5, FAL_KEY: 'x' } }), 400)
-  expect(unknown).toEqual({ error: 'invalid_setting', message: '未知参数：FAL_KEY' })
+  const unknown = await json<{ error: string; message: string }>(post(admin, '/api/admin/settings', { values: { signupBonusCredits: 5, UNKNOWN_SECRET: 'x' } }), 400)
+  expect(unknown).toEqual({ error: 'invalid_setting', message: '未知参数：UNKNOWN_SECRET' })
   const outOfRange = await json<{ message: string }>(post(admin, '/api/admin/settings', { values: { maintenance: true, generationDailyCap: -1 } }), 400)
   expect(outOfRange.message).toContain('全站每日生成上限')
   // 整体拒绝：同一次提交里合法的维护模式也没有保存

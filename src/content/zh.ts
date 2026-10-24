@@ -52,12 +52,12 @@ export function zh(s: S): Content {
       menu: '菜单',
     },
     hero: {
-      title: `${k} AI 视频生成器`,
-      subtitle: `只要一张自拍，就能拍出属于你的 ${k} 视频。原片的舞步、节奏和镜头全部保留，主角换成你。`,
+      title: `${k} — 一张自拍对口型说唱视频`,
+      subtitle: `上传一张照片，生成 AI 说唱对口型视频。模板节奏与镜头保留，主角换成你。独立粉丝向工具，非 CreateVision。从 $8.88 起。`,
       badge: `${s.trendPlatform} 热门`,
       original: '原版',
       aiVersion: 'AI 版',
-      chips: ['舞步不变', '镜头不变', '主角是你'],
+      chips: ['对口型说唱', '镜头不变', '从 $8.88 起'],
       creditNote: '示例片段为本站制作的演示素材。',
     },
     generator: {

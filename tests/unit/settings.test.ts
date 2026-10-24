@@ -18,7 +18,7 @@ const invalid = (input: unknown) => {
 
 describe('后台提交的运营参数', () => {
   it('未知字段、类型不对、越界或超长都整体拒绝，并说明是哪一项', () => {
-    expect(invalid({ signupBonusCredits: 10, FAL_KEY: 'x' })).toContain('FAL_KEY')
+    expect(invalid({ signupBonusCredits: 10, UNKNOWN_SECRET: 'x' })).toContain('UNKNOWN_SECRET')
     expect(invalid({ signupBonusCredits: 1001 })).toContain('0–1000')
     expect(invalid({ signupBonusCredits: 1.5 })).toContain('注册赠送积分')
     expect(invalid({ signupBonusCredits: '10' })).toContain('注册赠送积分')

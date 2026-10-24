@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   // 新站点：改 name、routes、database_name/id、bucket_name、queue 名称，再改 src/config/site.ts
-  "name": "video-template",
+  "name": "ai-rap-video-maynor",
   "main": "src/server.ts",
   "compatibility_date": "2026-06-19",
   "compatibility_flags": ["nodejs_compat"],
@@ -13,16 +13,16 @@
     "run_worker_first": ["/api/*"]
   },
   "vars": {
-    "APP_ENV": "development",
-    "SITE_URL": "http://localhost:3000",
+    "APP_ENV": "staging",
+    "SITE_URL": "https://ai-rap-video-maynor.chatgpt-plus.workers.dev",
     // waffo | dodo | stripe | mock（mock 只允许非 production）
-    "PAYMENT_PROVIDER": "mock",
-    // fal | yir | tryallapi | mock（mock 只允许非 production）
-    "VIDEO_PROVIDER": "mock",
+    "PAYMENT_PROVIDER": "stripe",
+    // tryallapi（默认）| mock（仅本地/e2e，staging/production 禁止）
+    "VIDEO_PROVIDER": "tryallapi",
     // 管理员邮箱（逗号分隔）：登录即为管理员，同时接收举报、留言提醒和系统告警
-    "ADMIN_EMAILS": "admin@example.com",
+    "ADMIN_EMAILS": "bgnwd15@gmail.com",
     // 交易邮件发件地址，域名须在 Cloudflare Email Service 完成 Onboard；留空 = 不发信（后台“邮件”页记为 skipped）
-    "EMAIL_FROM": "noreply@example.com",
+    "EMAIL_FROM": "noreply@ai-rap-video.asia",
     "WAFFO_ENVIRONMENT": "test",
     // Waffo 店铺 ID（STO_xxx，公开）：订阅的客户门户要用；只卖积分包可以留空
     "WAFFO_STORE_ID": "",
@@ -38,36 +38,36 @@
     // Cloudflare Turnstile 站点密钥（公开）；留空 = 不启用。启用时必须同时 `wrangler secret put TURNSTILE_SECRET_KEY`
     "TURNSTILE_SITE_KEY": "",
     // 上传图片审核：openai（需 OPENAI_API_KEY）| none | mock（mock 只允许非 production）
-    "MODERATION_PROVIDER": "mock"
+    "MODERATION_PROVIDER": "none"
   },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "video-template",
+      "database_name": "ai-rap-video-maynor",
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ],
-  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "video-template-media" }],
-  "kv_namespaces": [{ "binding": "KV", "id": "00000000000000000000000000000000" }],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "ai-rap-video-maynor-media" }],
+  "kv_namespaces": [{ "binding": "KV", "id": "41cad96aafcd459f829d25aea25ed784" }],
   "queues": {
-    "producers": [{ "binding": "VIDEO_QUEUE", "queue": "video-template-jobs" }],
+    "producers": [{ "binding": "VIDEO_QUEUE", "queue": "ai-rap-video-maynor-jobs" }],
     "consumers": [
       {
-        "queue": "video-template-jobs",
+        "queue": "ai-rap-video-maynor-jobs",
         "max_batch_size": 5,
         "max_batch_timeout": 2,
         "max_retries": 10,
-        "dead_letter_queue": "video-template-jobs-dlq"
+        "dead_letter_queue": "ai-rap-video-maynor-jobs-dlq"
       },
       // 死信：同一个 Worker 消费，任务判失败、退积分，健康检查据此告警（src/server.ts 按 -dlq 后缀分流）
-      { "queue": "video-template-jobs-dlq", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3 }
+      { "queue": "ai-rap-video-maynor-jobs-dlq", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3 }
     ]
   },
   "ratelimits": [
-    { "name": "UPLOAD_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
-    { "name": "GENERATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } },
-    { "name": "AUTH_LIMITER", "namespace_id": "1003", "simple": { "limit": 30, "period": 60 } }
+    { "name": "UPLOAD_LIMITER", "namespace_id": "4211", "simple": { "limit": 20, "period": 60 } },
+    { "name": "GENERATE_LIMITER", "namespace_id": "4212", "simple": { "limit": 10, "period": 60 } },
+    { "name": "AUTH_LIMITER", "namespace_id": "4213", "simple": { "limit": 30, "period": 60 } }
   ],
   // Cloudflare Email Service（交易邮件、管理员提醒）。本地 dev / e2e 只模拟发送；不要加 "remote": true，否则会真的发信
   "send_email": [{ "name": "EMAIL" }],

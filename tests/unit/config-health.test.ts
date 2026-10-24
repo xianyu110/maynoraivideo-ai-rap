@@ -14,7 +14,7 @@ function ready(overrides: { vars?: Record<string, string>; secrets?: ConfigInput
       APP_ENV: 'production',
       SITE_URL: 'https://moonhop.ai',
       PAYMENT_PROVIDER: 'waffo',
-      VIDEO_PROVIDER: 'fal',
+      VIDEO_PROVIDER: 'tryallapi',
       MODERATION_PROVIDER: 'openai',
       ADMIN_EMAILS: 'ops@moonhop.ai',
       EMAIL_FROM: 'noreply@mail.moonhop.ai',
@@ -29,7 +29,7 @@ function ready(overrides: { vars?: Record<string, string>; secrets?: ConfigInput
       GOOGLE_CLIENT_SECRET: 'g',
       WAFFO_MERCHANT_ID: 'm',
       WAFFO_PRIVATE_KEY: 'k',
-      FAL_KEY: 'f',
+      TRYALLAPI_API_KEY: 'f',
       OPENAI_API_KEY: 'o',
       TURNSTILE_SECRET_KEY: 't',
       ...overrides.secrets,
@@ -54,10 +54,10 @@ describe('checkConfig', () => {
       secrets: { DODO_API_KEY: 'd' },
     })
     expect(checkConfig(dodo)).toEqual([expect.objectContaining({ level: 'error', key: 'DODO_WEBHOOK_SECRET' })])
-    expect(keys(ready({ vars: { VIDEO_PROVIDER: 'yir' } }))).toEqual(['error:YIR_API_KEY'])
-    expect(keys(ready({ vars: { VIDEO_PROVIDER: 'yir' }, secrets: { YIR_API_KEY: 'y' } }))).toEqual([])
-    expect(keys(ready({ vars: { VIDEO_PROVIDER: 'tryallapi' } }))).toEqual(['error:TRYALLAPI_API_KEY'])
-    expect(keys(ready({ vars: { VIDEO_PROVIDER: 'tryallapi' }, secrets: { TRYALLAPI_API_KEY: 't' } }))).toEqual([])
+    expect(keys(ready({ vars: { VIDEO_PROVIDER: 'yir' } }))).toEqual(['error:VIDEO_PROVIDER'])
+    expect(keys(ready({ vars: { VIDEO_PROVIDER: 'fal' } }))).toEqual(['error:VIDEO_PROVIDER'])
+    expect(keys(ready({ secrets: { TRYALLAPI_API_KEY: '' } }))).toEqual(['error:TRYALLAPI_API_KEY'])
+    expect(keys(ready({ secrets: { TRYALLAPI_API_KEY: 't' } }))).toEqual([])
     const stripe = ready({
       vars: { PAYMENT_PROVIDER: 'stripe', STRIPE_ENVIRONMENT: 'live', STRIPE_PRODUCTS: '{"starter":"price_1","party":"price_2"}' },
       secrets: { STRIPE_SECRET_KEY: 'sk' },
@@ -142,8 +142,8 @@ describe('doctor', () => {
     expect(parsePendingMigrations(table)).toEqual(['0007_admin_lookup.sql', '0008_order_reconcile.sql'])
     expect(parsePendingMigrations('Resource location: remote\n✅ No migrations to apply!')).toEqual([])
     expect(parsePendingMigrations('✘ [ERROR] Authentication error')).toBeNull()
-    expect(parseSecretNames('⛅️ wrangler\n[{"name":"FAL_KEY","type":"secret_text"},{"name":"SESSION_SECRET","type":"secret_text"}]\n')).toEqual([
-      'FAL_KEY',
+    expect(parseSecretNames('⛅️ wrangler\n[{"name":"TRYALLAPI_API_KEY","type":"secret_text"},{"name":"SESSION_SECRET","type":"secret_text"}]\n')).toEqual([
+      'TRYALLAPI_API_KEY',
       'SESSION_SECRET',
     ])
     expect(parseSecretNames('✘ [ERROR] Worker not found [code: 10007]')).toBeNull()
@@ -164,7 +164,7 @@ describe('doctor', () => {
 
   it('可上线的配置通过；缺 secret、未应用 migration、查询失败都报错', () => {
     expect(doctorKeys(deployable())).toEqual([])
-    expect(doctorKeys(deployable(), { secretNames: allSecrets.filter((n) => n !== 'FAL_KEY') })).toEqual(['error:FAL_KEY'])
+    expect(doctorKeys(deployable(), { secretNames: allSecrets.filter((n) => n !== 'TRYALLAPI_API_KEY') })).toEqual(['error:TRYALLAPI_API_KEY'])
     expect(doctorKeys(deployable(), { pendingMigrations: ['0008_order_reconcile.sql'] })).toEqual(['error:migrations'])
     // 读不到 secret 列表时只报一条，不把每个密钥都报成缺失
     expect(doctorKeys(deployable(), { secretNames: null, pendingMigrations: null })).toEqual(['error:secrets', 'error:migrations'])
