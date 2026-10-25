@@ -521,6 +521,10 @@ scripts/                new-site, doctor (pre-deploy checks), sync-plan (templat
 tests/                  unit, e2e (mock providers), smoke (post-deploy), sandbox (payment provider test mode)
 ```
 
+## Community
+
+This project **links to and recognizes the [LINUX DO](https://linux.do/) community** (friend link). Thanks to the community for the open-source atmosphere.
+
 ## License
 
 [MIT](LICENSE)

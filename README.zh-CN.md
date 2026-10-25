@@ -424,6 +424,10 @@ scripts/                new-site（上新词）、doctor（部署前体检）、
 tests/                  unit（单元）、e2e（mock 服务商）、smoke（部署后巡检）、sandbox（支付商 test 模式）
 ```
 
+## 社区友链
+
+本仓库 **链接认可 [LINUX DO](https://linux.do/) 社区**（友链）。感谢佬友与社区的开源氛围。
+
 ## 许可证
 
 [MIT](LICENSE)
