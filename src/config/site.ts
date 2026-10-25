@@ -48,9 +48,9 @@ export const site = {
 
   // 视频模型，服务商由 VIDEO_PROVIDER 选择（tryallapi 默认；mock 仅本地/e2e）。换模型时同时检查 src/server/video/ 下对应文件的入参与出参。
   video: {
-    // TryAllAPI（默认，VIDEO_PROVIDER=tryallapi）：聚合站模型名以控制台「模型广场」为准，例如 aigc-video-hailuo / sora-2
+    // TryAllAPI（默认，VIDEO_PROVIDER=tryallapi）：聚合站模型名以控制台「模型广场」为准，例如 doubao-seedance-2-0-fast-260128 / aigc-video-hailuo / sora-2
     tryallapi: {
-      model: 'aigc-video-hailuo',
+      model: 'doubao-seedance-2-0-fast-260128',
       prompt:
         'The person in the reference image lip-syncs and performs the exact rap moves from the viral AI rap video template. Keep their face, hair, body shape and outfit identical. Clear mouth motion, smooth motion, vertical 9:16.',
       resolution: '720p',

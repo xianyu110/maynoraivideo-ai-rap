@@ -103,7 +103,7 @@ npm run dev -- --host 127.0.0.1      # http://127.0.0.1:3000
 
 2. **TryAllAPI**  
    - Create a key at https://tryallapi.com/console/token → `TRYALLAPI_API_KEY`.  
-   - Set `VIDEO_PROVIDER=tryallapi`. Adjust `site.video.tryallapi` (default model `aigc-video-hailuo`).  
+   - Set `VIDEO_PROVIDER=tryallapi`. Adjust `site.video.tryallapi` (default model `doubao-seedance-2-0-fast-260128`).  
    - Callback (when upstream supports `webhook_url`): `https://<domain>/api/webhooks/tryallapi` (results are always re-fetched with the API key).
 
 3. **Google OAuth** redirect: `https://<domain>/api/auth/google/callback`.
