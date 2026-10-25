@@ -20,7 +20,7 @@ English notes for forking / uploading to your own GitHub. Full detail: [README.m
 3. Worker submits to the active video provider with signed photo URL + template MP4 URL.
 4. Provider webhook (or poll) → download result into R2 `outputs/` → email user; failures refund credits.
 
-TryAllAPI path: `POST {TRYALLAPI_BASE_URL}/v1/video/generations` then poll `/v1/video/generations/{task_id}` (fallback `/v1/video/tasks/{id}`). Model/prompt in `site.video.tryallapi`.
+TryAllAPI path: Doubao/Seedance → `POST/GET {TRYALLAPI_BASE_URL}/api/v3/contents/generations/tasks` (duration clamped 4–15s); other models → `/v1/video/generations` (status fallback `/v1/video/tasks/{id}`). Model/prompt in `site.video.tryallapi`.
 
 ## Required env (production sketch)
 

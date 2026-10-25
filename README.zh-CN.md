@@ -266,7 +266,7 @@ SMOKE_BASE_URL=https://video-template-staging.<子域名>.workers.dev SMOKE_EXPE
   - 出片后才被判失败的任务（超时、管理员判失败）照样记成本；没出片的失败任务不记。mock 记 0。
   - 后台概览显示近 30 天的服务商成本、消耗积分折算的收入和估算毛利；生成列表逐条显示成本和毛利。每积分实收 = USD 已支付订单的净实收 ÷ 未回收的积分。实际扣费以服务商账单为准。
 - **视频服务商**：`VIDEO_PROVIDER` 可选 `tryallapi`（默认）或 `mock`（仅本地/e2e；staging/production 禁止）。
-  - **TryAllAPI**（`VIDEO_PROVIDER=tryallapi`）：[tryallapi.com](https://tryallapi.com/) 聚合 API。配置 `TRYALLAPI_API_KEY`（可选 `TRYALLAPI_BASE_URL`）。模型/提示词在 `site.video.tryallapi`。提交走 `POST /v1/video/generations`，用户照片作 `image`；仅当模型支持参考视频时把 `passSourceVideo` 设为 `true`。详见 [docs/STACK.md](docs/STACK.md)。
+  - **TryAllAPI**（`VIDEO_PROVIDER=tryallapi`）：[tryallapi.com](https://tryallapi.com/) 聚合 API。配置 `TRYALLAPI_API_KEY`（可选 `TRYALLAPI_BASE_URL`）。模型/提示词在 `site.video.tryallapi`。Doubao/Seedance 走 `POST/GET /api/v3/contents/generations/tasks`（时长夹到 4–15s，照片作 `reference_image`）；其它模型仍走 `/v1/video/generations`。仅当模型支持参考视频时把 `passSourceVideo` 设为 `true`。详见 [docs/STACK.md](docs/STACK.md)。
   - `mock` 几秒后直接复制模板源视频，只用于本地和 e2e。
 
 

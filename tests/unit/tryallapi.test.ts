@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { site } from '#/config/site'
-import { createTryAllApiProvider } from '#/server/video/tryallapi'
+import {
+  clampSeedanceDuration,
+  createTryAllApiProvider,
+  isDoubaoSeedanceModel,
+} from '#/server/video/tryallapi'
 
 const env = (vars: Record<string, string> = {}) =>
   ({
@@ -29,41 +33,60 @@ afterEach(() => {
 })
 
 describe('tryallapi provider', () => {
-  it('提交时带上模型、照片、时长，HTTPS 才附带 webhook', async () => {
+  it('Seedance/doubao 走 v3 contents/generations/tasks，映射图+时长+比例并夹紧时长', async () => {
+    expect(isDoubaoSeedanceModel(site.video.tryallapi.model)).toBe(true)
+    expect(clampSeedanceDuration(2)).toBe(4)
+    expect(clampSeedanceDuration(18)).toBe(15)
+
     const calls: Array<{ url: string; body: Record<string, unknown> }> = []
     vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
       calls.push({ url: String(url), body: JSON.parse(String(init?.body)) })
-      return json(200, { task_id: 'task_1', status: 'queued' })
+      return json(200, { id: 'task_1', status: 'queued' })
     })
     const provider = createTryAllApiProvider(env())
-    expect(await provider.submit(input())).toEqual({ requestId: 'task_1', meta: { base: 'https://tryallapi.com' } })
-    expect(calls[0]!.url).toBe('https://tryallapi.com/v1/video/generations')
+    expect(await provider.submit(input())).toEqual({
+      requestId: 'task_1',
+      meta: { base: 'https://tryallapi.com', api: 'v3', duration: 12 },
+    })
+    expect(calls[0]!.url).toBe('https://tryallapi.com/api/v3/contents/generations/tasks')
     expect(calls[0]!.body).toMatchObject({
       model: site.video.tryallapi.model,
-      prompt: site.video.tryallapi.prompt,
-      image: input().imageUrl,
+      resolution: site.video.tryallapi.resolution,
+      ratio: site.template.aspectRatio,
       duration: 12,
-      webhook_url: input().webhookUrl,
+      generate_audio: true,
+      callback_url: input().webhookUrl,
     })
+    expect(calls[0]!.body.content).toEqual([
+      { type: 'text', text: site.video.tryallapi.prompt },
+      {
+        type: 'image_url',
+        image_url: { url: input().imageUrl },
+        role: 'reference_image',
+      },
+    ])
 
     await provider.submit(input('http://localhost:3000/api/webhooks/tryallapi?gen=gen_1&token=t'))
-    expect(calls[1]!.body).not.toHaveProperty('webhook_url')
+    expect(calls[1]!.body).not.toHaveProperty('callback_url')
   })
 
-  it('status：排队中 / 成功出片 / 失败', async () => {
+  it('status：v3 排队中 / succeeded 出片 / failed', async () => {
     const responses = [
-      json(200, { status: 'in_progress' }),
-      json(200, { status: 'completed', video_url: 'https://cdn.example/out.mp4' }),
+      json(200, { status: 'running' }),
+      json(200, { status: 'succeeded', content: { video_url: 'https://cdn.example/out.mp4' } }),
       json(200, { status: 'failed', error: { message: 'no channel' } }),
     ]
-    vi.stubGlobal('fetch', async () => responses.shift()!)
+    vi.stubGlobal('fetch', async (url: string) => {
+      expect(String(url)).toContain('/api/v3/contents/generations/tasks/')
+      return responses.shift()!
+    })
     const provider = createTryAllApiProvider(env())
-    expect(await provider.status('task_1', { base: 'https://tryallapi.com' })).toEqual({ state: 'pending' })
-    expect(await provider.status('task_1', { base: 'https://tryallapi.com' })).toEqual({
+    expect(await provider.status('task_1', { base: 'https://tryallapi.com', api: 'v3' })).toEqual({ state: 'pending' })
+    expect(await provider.status('task_1', { base: 'https://tryallapi.com', api: 'v3' })).toEqual({
       state: 'completed',
       output: { url: 'https://cdn.example/out.mp4' },
     })
-    expect(await provider.status('task_1', { base: 'https://tryallapi.com' })).toMatchObject({
+    expect(await provider.status('task_1', { base: 'https://tryallapi.com', api: 'v3' })).toMatchObject({
       state: 'failed',
       code: 'tryallapi_failed',
       message: expect.stringContaining('no channel'),
@@ -72,7 +95,7 @@ describe('tryallapi provider', () => {
 
   it('自定义 BASE_URL；缺密钥不可重试', async () => {
     vi.stubGlobal('fetch', async (url: string) => {
-      expect(String(url).startsWith('https://custom.example/v1/')).toBe(true)
+      expect(String(url).startsWith('https://custom.example/api/v3/')).toBe(true)
       return json(200, { id: 'task_x', status: 'queued' })
     })
     const provider = createTryAllApiProvider(env({ TRYALLAPI_BASE_URL: 'https://custom.example/' }))
@@ -81,5 +104,17 @@ describe('tryallapi provider', () => {
       code: 'provider_not_configured',
       retryable: false,
     })
+  })
+
+  it('提交时把 18s 夹到 15s（Seedance 上限）', async () => {
+    const calls: Array<{ body: Record<string, unknown> }> = []
+    vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
+      calls.push({ body: JSON.parse(String(init?.body)) })
+      return json(200, { id: 'task_long', status: 'queued' })
+    })
+    const provider = createTryAllApiProvider(env())
+    const result = await provider.submit({ ...input(), durationSeconds: 18 })
+    expect(result.meta).toMatchObject({ api: 'v3', duration: 15 })
+    expect(calls[0]!.body.duration).toBe(15)
   })
 })
