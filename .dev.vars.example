@@ -20,8 +20,10 @@ DODO_WEBHOOK_SECRET=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 
-# --- Video: VIDEO_PROVIDER=tryallapi (default) or mock (local/e2e only) ---
-# TryAllAPI (VIDEO_PROVIDER=tryallapi) https://tryallapi.com/console/token
+# --- Video: VIDEO_PROVIDER=yir (prod) / mock (local); VIDEO_FALLBACK_PROVIDER=tryallapi ---
+# yir.ai (primary) https://yir.ai/?ref=ctc47abk
+YIR_API_KEY=
+# TryAllAPI (fallback) https://tryallapi.com/console/token
 TRYALLAPI_API_KEY=
 # Optional; default https://tryallapi.com
 TRYALLAPI_BASE_URL=

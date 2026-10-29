@@ -17,8 +17,10 @@
     "SITE_URL": "https://ai-rap-video-maynor.chatgpt-plus.workers.dev",
     // waffo | dodo | stripe | mock（mock 只允许非 production）
     "PAYMENT_PROVIDER": "stripe",
-    // tryallapi（默认）| mock（仅本地/e2e，staging/production 禁止）
-    "VIDEO_PROVIDER": "tryallapi",
+    // yir（首选）| tryallapi | mock（仅本地/e2e，staging/production 禁止）
+    "VIDEO_PROVIDER": "yir",
+    // 主服务商提交失败（账户/不可用，非用户输入校验）且尚未拿到 request id 时，自动改用回退服务商重试一次
+    "VIDEO_FALLBACK_PROVIDER": "tryallapi",
     // 管理员邮箱（逗号分隔）：登录即为管理员，同时接收举报、留言提醒和系统告警
     "ADMIN_EMAILS": "bgnwd15@gmail.com",
     // 交易邮件发件地址，域名须在 Cloudflare Email Service 完成 Onboard；留空 = 不发信（后台“邮件”页记为 skipped）

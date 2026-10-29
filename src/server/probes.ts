@@ -177,6 +177,17 @@ async function probeVideo(env: Env): Promise<Outcome> {
     if (response.status >= 500) return fail(`TryAllAPI 返回 HTTP ${response.status}`)
     return ok(`鉴权正常（${base}，模型 ${site.video.tryallapi.model}）；余额请在 tryallapi 控制台查看`)
   }
+  if (id === 'yir') {
+    const key = cleanSecret(env.YIR_API_KEY)
+    if (!key) return fail('YIR_API_KEY 未配置')
+    const response = await fetch('https://gateway.yir.ai/v1/balance', { headers: { Authorization: `Bearer ${key}` } })
+    if (response.status === 401) return fail('YIR_API_KEY 无效')
+    if (!response.ok) return fail(`查询余额返回 HTTP ${response.status}`)
+    const body = (await response.json().catch(() => null)) as { available_amount?: unknown; currency?: unknown } | null
+    const available = Number(body?.available_amount)
+    if (!Number.isFinite(available)) return warn('鉴权正常，但读不到余额')
+    return balanceOutcome(available, String(body?.currency ?? 'USD'), ' yir ')
+  }
   return fail(`不支持的 VIDEO_PROVIDER: ${id}`)
 }
 

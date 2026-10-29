@@ -101,7 +101,14 @@ describe('视频服务商探测', () => {
     expect(await probe('video', env)).toMatchObject({ status: 'fail', message: expect.stringContaining('500') })
     expect(await probe('video', { VIDEO_PROVIDER: 'tryallapi' })).toMatchObject({ status: 'fail', message: 'TRYALLAPI_API_KEY 未配置' })
     expect(await probe('video', { VIDEO_PROVIDER: 'fal' })).toMatchObject({ status: 'fail' })
-    expect(await probe('video', { VIDEO_PROVIDER: 'yir' })).toMatchObject({ status: 'fail' })
+  })
+
+  it('yir：查余额接口；缺 key fail', async () => {
+    const env = { VIDEO_PROVIDER: 'yir', YIR_API_KEY: 'yir_key_abcdefgh' }
+    const calls = stubFetch({ 'gateway.yir.ai/v1/balance': { body: { available_amount: '12.00', currency: 'USD' } } })
+    expect(await probe('video', env)).toMatchObject({ status: 'ok', provider: 'yir' })
+    expect(calls[0]?.auth).toBe('Bearer yir_key_abcdefgh')
+    expect(await probe('video', { VIDEO_PROVIDER: 'yir' })).toMatchObject({ status: 'fail', message: 'YIR_API_KEY 未配置' })
   })
 
   it('上游报错里出现的密钥值被替换掉', async () => {

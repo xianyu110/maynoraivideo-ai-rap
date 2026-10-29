@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/895aab94-d0c9-474e-8d90-61a6c551e536
 - 前端/SSR：TanStack Start（React 19）+ Tailwind 4，`/` 英文、`/zh` 中文
 - API：Hono（`/api/*`、`/media/*`、`/sitemap.xml`、`/robots.txt`、IndexNow key 文件），入口 `src/server.ts`
 - 支付：Stripe（Checkout + 积分，与 ShipAny 同套路）、Waffo Pancake / Dodo Payments（后两者为 MoR）；`mock` 仅用于本地和 e2e
-- 视频：[TryAllAPI](https://tryallapi.com/)（默认）；`mock` 仅用于本地和 e2e。见下文“视频服务商”
+- 视频：[yir.ai](https://yir.ai/?ref=ctc47abk) 首选 + TryAllAPI 回退；`mock` 仅用于本地和 e2e。见下文“视频服务商”
 - 已具备：
   - 用户与积分：Google 登录（含 One Tap）、积分包、月付和年付订阅、积分流水、个人中心（视频/账单/设置/兑换码/邀请链接/注销/导出我的数据）；账单显示实付与退款，订单和积分流水可分页加载，每笔订单有可打印的详情页（税务发票由支付商出具）
   - 订单与生成：订单与部分/全额退款回收、生成任务队列（含死信队列）与失败退积分
@@ -39,7 +39,7 @@ https://github.com/user-attachments/assets/895aab94-d0c9-474e-8d90-61a6c551e536
 1. **不要提交密钥**：复制 [`.dev.vars.example`](.dev.vars.example) 为 `.dev.vars`（已 gitignore）；生产用 `wrangler secret put` 或 `scripts/sync-secrets.mjs`。
 2. **本地**：`npm install` → `cp .dev.vars.example .dev.vars`（至少设 `SESSION_SECRET`）→ `npm run seed:local` → `npm run dev -- --host 127.0.0.1`。默认 `PAYMENT_PROVIDER=mock`、`VIDEO_PROVIDER=mock`。
 3. **Stripe**：`PAYMENT_PROVIDER=stripe`，`STRIPE_PRODUCTS` 填各积分包/订阅的 **Price** id（`price_…`），密钥 `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`，Webhook `https://<domain>/api/webhooks/stripe`。
-4. **TryAllAPI**：`VIDEO_PROVIDER=tryallapi`，`TRYALLAPI_API_KEY`（[控制台](https://tryallapi.com/console/token)），模型在 `site.video.tryallapi`。
+4. **视频**：`VIDEO_PROVIDER=yir` + `VIDEO_FALLBACK_PROVIDER=tryallapi`；`YIR_API_KEY`（[yir.ai](https://yir.ai/?ref=ctc47abk)）与 `TRYALLAPI_API_KEY`（[控制台](https://tryallapi.com/console/token)）；模型在 `site.video.yir` / `site.video.tryallapi`。
 5. **部署 Cloudflare Workers**：创建 D1/R2/KV/Queues → `npm run db:migrate:remote` → 同步 secrets → 改 `wrangler.jsonc` 的 vars → `npm run doctor` → `npm run deploy`。
 
 ## 本地开发
@@ -265,8 +265,9 @@ SMOKE_BASE_URL=https://video-template-staging.<子域名>.workers.dev SMOKE_EXPE
 - **成本与毛利**：出片时把服务商成本写入 `generations.provider_cost_cents`：按 `site.video.tryallapi.costCentsPerSecond` 估算写入。
   - 出片后才被判失败的任务（超时、管理员判失败）照样记成本；没出片的失败任务不记。mock 记 0。
   - 后台概览显示近 30 天的服务商成本、消耗积分折算的收入和估算毛利；生成列表逐条显示成本和毛利。每积分实收 = USD 已支付订单的净实收 ÷ 未回收的积分。实际扣费以服务商账单为准。
-- **视频服务商**：`VIDEO_PROVIDER` 可选 `tryallapi`（默认）或 `mock`（仅本地/e2e；staging/production 禁止）。
-  - **TryAllAPI**（`VIDEO_PROVIDER=tryallapi`）：[tryallapi.com](https://tryallapi.com/) 聚合 API。配置 `TRYALLAPI_API_KEY`（可选 `TRYALLAPI_BASE_URL`）。模型/提示词在 `site.video.tryallapi`。Doubao/Seedance 走 `POST/GET /api/v3/contents/generations/tasks`（时长夹到 4–15s，照片作 `reference_image`）；其它模型仍走 `/v1/video/generations`。仅当模型支持参考视频时把 `passSourceVideo` 设为 `true`。详见 [docs/STACK.md](docs/STACK.md)。
+- **视频服务商**：`VIDEO_PROVIDER` 可选 `yir`（推荐）、`tryallapi` 或 `mock`（仅本地/e2e；staging/production 禁止）。提交失败时可设 `VIDEO_FALLBACK_PROVIDER=tryallapi`：仅在主服务商尚未返回 request id 时切换并重试一次，避免重复计费；轮询/webhook 使用行上记录的 provider。
+  - [yir.ai](https://yir.ai/?ref=ctc47abk)（`VIDEO_PROVIDER=yir`）：secret 写 `YIR_API_KEY`，模型/提示词在 `site.video.yir`（`src/server/video/yir.ts`）。提交带 `Idempotency-Key`（任务 id）与 `Yir-Referral: ctc47abk`。
+  - **TryAllAPI**（主选或回退）：[tryallapi.com](https://tryallapi.com/) 聚合 API。配置 `TRYALLAPI_API_KEY`（可选 `TRYALLAPI_BASE_URL`）。模型/提示词在 `site.video.tryallapi`。Doubao/Seedance 走 `POST/GET /api/v3/contents/generations/tasks`（时长夹到 4–15s，照片作 `reference_image`）；其它模型仍走 `/v1/video/generations`。仅当模型支持参考视频时把 `passSourceVideo` 设为 `true`。详见 [docs/STACK.md](docs/STACK.md)。
   - `mock` 几秒后直接复制模板源视频，只用于本地和 e2e。
 
 

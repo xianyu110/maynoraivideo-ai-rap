@@ -46,9 +46,20 @@ export const site = {
     ],
   },
 
-  // 视频模型，服务商由 VIDEO_PROVIDER 选择（tryallapi 默认；mock 仅本地/e2e）。换模型时同时检查 src/server/video/ 下对应文件的入参与出参。
+  // 视频模型，服务商由 VIDEO_PROVIDER 选择（yir 首选；tryallapi 为提交失败回退；mock 仅本地/e2e）。换模型时同时检查 src/server/video/ 下对应文件的入参与出参。
   video: {
-    // TryAllAPI（默认，VIDEO_PROVIDER=tryallapi）：聚合站模型名以控制台「模型广场」为准，例如 doubao-seedance-2-0-fast-260128 / aigc-video-hailuo / sora-2
+    // yir.ai 网关（VIDEO_PROVIDER=yir）：照片 + 源视频走 Kling Motion Control。prompt 按热词写清要保留什么。
+    yir: {
+      model: 'klingai/kling-2.6',
+      prompt: 'The person in the reference image lip-syncs and performs the exact rap moves from the viral AI rap video template. Keep their face, hair, body shape and outfit identical. Clear mouth motion, smooth motion, vertical 9:16.',
+      resolution: '720p',
+      // 成本估算（美分/秒），只在出片时 yir 账单还没结算时用。按参考视频秒数计费，以 https://yir.ai/models 当前报价为准
+      costCentsPerSecond: 7,
+      // 用户照片会经过哪些上游渠道。null = 按 API Key 绑定的 Routing Profile 选，失败可换渠道；
+      // 填渠道 ID（如 ['official'] 只走 Kling 官方）则只在这些渠道里选，全部失败时任务失败。隐私政策要写明实际经过的渠道
+      routingOnly: null as readonly string[] | null,
+    },
+    // TryAllAPI（VIDEO_FALLBACK_PROVIDER=tryallapi 或 VIDEO_PROVIDER=tryallapi）：聚合站模型名以控制台「模型广场」为准
     tryallapi: {
       model: 'doubao-seedance-2-0-fast-260128',
       prompt:

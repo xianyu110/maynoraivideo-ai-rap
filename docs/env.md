@@ -42,6 +42,7 @@
 | `WAFFO_MERCHANT_ID`、`WAFFO_PRIVATE_KEY` | `PAYMENT_PROVIDER=waffo` | 私钥支持 PKCS1 和 PKCS8，可以写成一行，换行用 `\n`。验签公钥已内置在代码里 |
 | `DODO_API_KEY`、`DODO_WEBHOOK_SECRET` | `PAYMENT_PROVIDER=dodo` | API 密钥需要的权限见 README 的“第三方回调地址”；卖订阅还要 Subscriptions 读写和 Customers 写入，见 [subscriptions.md](subscriptions.md) |
 | `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET` | `PAYMENT_PROVIDER=stripe` | 可选 secret，类型在 `src/env.d.ts`。Secret Key 用 `sk_test_` / `sk_live_`；Webhook Signing Secret 用 `whsec_…`（Dashboard → Developers → Webhooks） |
+| `YIR_API_KEY` | `VIDEO_PROVIDER=yir` |
 | `TRYALLAPI_API_KEY` | `VIDEO_PROVIDER=tryallapi` | 可选 secret。在 https://tryallapi.com/console/token 创建。可选 `TRYALLAPI_BASE_URL`（默认 `https://tryallapi.com`） |
 | `OPENAI_API_KEY` | `MODERATION_PROVIDER=openai` | 可选 secret，类型声明在 `src/env.d.ts` |
 | `TURNSTILE_SECRET_KEY` | 配了 `TURNSTILE_SITE_KEY` | 同上 |

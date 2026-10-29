@@ -11,7 +11,7 @@ English notes for forking / uploading to your own GitHub. Full detail: [README.m
 | UI | React 19 + Tailwind 4, locales `en` (default) / `zh` |
 | Auth | Google OAuth (+ One Tap); credits ledger in D1 |
 | Payments | `PAYMENT_PROVIDER`: `stripe` (ShipAny-style Checkout+credits), `waffo`, `dodo`, or `mock` (local) |
-| Video | `VIDEO_PROVIDER`: `tryallapi` (https://tryallapi.com, default) or `mock` (local/e2e only) |
+| Video | `VIDEO_PROVIDER`: `yir` (+ optional `VIDEO_FALLBACK_PROVIDER=tryallapi`) / `tryallapi` (https://tryallapi.com, default) or `mock` (local/e2e only) |
 
 ## Generation flow
 

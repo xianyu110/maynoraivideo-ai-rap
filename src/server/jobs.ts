@@ -7,7 +7,7 @@ import type { GenerationRow, UploadRow, VideoJobMessage } from './types'
 import { sweepExpiredMedia } from './retention'
 import { grantDueSubscriptions } from './subscriptions'
 import { nowIso } from './util'
-import { getVideoProvider } from './video'
+import { getVideoProvider, videoFallbackProviderId } from './video'
 import { VideoProviderError } from './video/types'
 
 const JOB_TIMEOUT_MINUTES = 45
@@ -59,7 +59,7 @@ export async function storeOutputFromUrl(
   await env.MEDIA.put(key, bytes, { httpMetadata })
   return true
 }
-const POLL_DELAY_SECONDS: Record<string, number> = { mock: 2, tryallapi: 20 }
+const POLL_DELAY_SECONDS: Record<string, number> = { mock: 2, fal: 20, yir: 20, tryallapi: 20 }
 
 export async function enqueueJob(env: Env, message: VideoJobMessage, delaySeconds = 0) {
   await env.VIDEO_QUEUE.send(message, delaySeconds > 0 ? { delaySeconds } : undefined)
@@ -105,6 +105,13 @@ export async function handleVideoJob(env: Env, message: VideoJobMessage) {
   else await pollGeneration(env, generation)
 }
 
+/** User-input / policy errors must not switch providers; account/unavailable/transient may. */
+function isFallbackEligibleSubmitError(error: unknown): boolean {
+  if (!(error instanceof VideoProviderError)) return true
+  if (/^invalid_|moderation|content_policy|unsafe|bad_request/i.test(error.code)) return false
+  return true
+}
+
 async function submitGeneration(env: Env, generation: GenerationRow) {
   if (generation.status !== 'queued') return
   // 先抢占：队列至少投递一次，重复消息不能重复向 provider 提交（会重复计费）
@@ -122,29 +129,60 @@ async function submitGeneration(env: Env, generation: GenerationRow) {
     return
   }
 
-  const provider = getVideoProvider(env, generation.provider)
-  const baseMeta = parseMeta(generation.provider_meta)
+  let providerId = generation.provider
+  let provider = getVideoProvider(env, providerId)
+  let meta = parseMeta(generation.provider_meta)
 
   // 签名在 try 里：生产环境 SESSION_SECRET 配错时会抛错，要和提交失败一样放回 queued，交给队列重试和死信退款
   try {
-    const webhookUrl = new URL(`/api/webhooks/${provider.id}`, env.SITE_URL)
-    webhookUrl.searchParams.set('gen', generation.id)
-    webhookUrl.searchParams.set('token', await jobToken(env, generation.id))
-    // 重新提交时请求体要和第一次一致，签名按任务创建时间算（任务 45 分钟超时，2 小时有效期足够）
-    const result = await provider.submit({
-      generationId: generation.id,
-      durationSeconds: generation.duration_seconds,
-      imageUrl: await signedUploadUrl(env, upload.id, Date.parse(generation.created_at)),
-      sourceVideoUrl: templateSourceUrl(env, duration.source),
-      sourceVideoKey: `templates/${duration.source}`,
-      webhookUrl: webhookUrl.toString(),
-      meta: baseMeta,
-    })
+    const imageUrl = await signedUploadUrl(env, upload.id, Date.parse(generation.created_at))
+    const sourceVideoUrl = templateSourceUrl(env, duration.source)
+    const sourceVideoKey = `templates/${duration.source}`
+
+    const runSubmit = async () => {
+      const webhookUrl = new URL(`/api/webhooks/${provider.id}`, env.SITE_URL)
+      webhookUrl.searchParams.set('gen', generation.id)
+      webhookUrl.searchParams.set('token', await jobToken(env, generation.id))
+      // 重新提交时请求体要和第一次一致，签名按任务创建时间算（任务 45 分钟超时，2 小时有效期足够）
+      return provider.submit({
+        generationId: generation.id,
+        durationSeconds: generation.duration_seconds,
+        imageUrl,
+        sourceVideoUrl,
+        sourceVideoKey,
+        webhookUrl: webhookUrl.toString(),
+        meta,
+      })
+    }
+
+    let result
+    try {
+      result = await runSubmit()
+    } catch (submitError) {
+      // Cross-provider fallback: only before any provider accepted the job (no provider_request_id yet).
+      // Never retry submit on a provider that already returned a request id — that would double-bill.
+      const fallbackId =
+        !meta.fallbackFrom && isFallbackEligibleSubmitError(submitError)
+          ? videoFallbackProviderId(env, providerId)
+          : null
+      if (!fallbackId) throw submitError
+      meta = { ...meta, fallbackFrom: providerId }
+      const switched = await env.DB.prepare(
+        `UPDATE arv_generations SET provider = ?, provider_meta = ?, updated_at = ? WHERE id = ? AND status = 'processing' AND provider_request_id IS NULL`,
+      )
+        .bind(fallbackId, JSON.stringify(meta), nowIso(), generation.id)
+        .run()
+      if (!switched.meta.changes) throw submitError
+      providerId = fallbackId
+      provider = getVideoProvider(env, providerId)
+      result = await runSubmit()
+    }
+
     const now = nowIso()
     await env.DB.prepare(
       `UPDATE arv_generations SET provider_request_id = ?, provider_meta = ?, started_at = ?, updated_at = ? WHERE id = ?`,
     )
-      .bind(result.requestId, JSON.stringify(result.meta), now, now, generation.id)
+      .bind(result.requestId, JSON.stringify({ ...result.meta, ...(meta.fallbackFrom ? { fallbackFrom: meta.fallbackFrom } : {}) }), now, now, generation.id)
       .run()
     await enqueueJob(env, { kind: 'poll', generationId: generation.id }, POLL_DELAY_SECONDS[provider.id])
   } catch (error) {

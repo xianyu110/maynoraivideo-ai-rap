@@ -15,7 +15,7 @@ A 72-second tour, no sound ([Chinese version](README.zh-CN.md); MP4 files in [do
 - Frontend/SSR: TanStack Start (React 19) + Tailwind 4. English at `/`, Chinese at `/zh`.
 - API: Hono (`/api/*`, `/media/*`, `/sitemap.xml`, `/robots.txt`, IndexNow key file); entry point `src/server.ts`.
 - Payments: [Stripe](https://stripe.com) (Checkout + credits, ShipAny-style), or Waffo Pancake / Dodo Payments (Merchants of Record). `mock` is for local dev and e2e only.
-- Video: [TryAllAPI](https://tryallapi.com/) (default, OpenAI-compatible aggregate); `mock` for local/e2e only. See "Video providers" below.
+- Video: [yir.ai](https://yir.ai/?ref=ctc47abk) primary, [TryAllAPI](https://tryallapi.com/) fallback; `mock` for local/e2e only. See "Video providers" below.
 - Included:
   - Users and credits: Google sign-in (including One Tap), credit packs, monthly and yearly subscriptions and a credit ledger, dashboard (videos, billing, settings, redeem codes, invite link, account deletion, data export); billing shows amounts paid and refunded, orders and the ledger load page by page, and every order has a printable detail page (tax invoices come from the payment provider).
   - Orders and generation: partial and full refunds that claw back credits, a generation queue with a dead-letter queue, credits returned automatically on failure.
@@ -45,7 +45,7 @@ This repo is a **fork-ready Cloudflare Workers template** for AI “photo → vi
 | Host | Cloudflare Workers (D1 + R2 + KV + Queues + Cron) — not Vercel |
 | Auth | Google OAuth (`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`) |
 | Payments | `PAYMENT_PROVIDER=stripe` (Checkout + credits; not a Merchant of Record) |
-| Video | `VIDEO_PROVIDER=tryallapi` ([tryallapi.com](https://tryallapi.com/)) |
+| Video | `VIDEO_PROVIDER=yir` + `VIDEO_FALLBACK_PROVIDER=tryallapi` ([yir.ai](https://yir.ai/?ref=ctc47abk) / [tryallapi.com](https://tryallapi.com/)) |
 | Local only | Defaults stay `PAYMENT_PROVIDER=mock` and `VIDEO_PROVIDER=mock` |
 
 Waffo / Dodo / Stripe remain supported for payments; video is TryAllAPI (or mock locally). See [docs/STACK.md](docs/STACK.md).
@@ -60,7 +60,8 @@ Waffo / Dodo / Stripe remain supported for payments; video is TryAllAPI (or mock
 | `GOOGLE_CLIENT_SECRET` | With Google sign-in |
 | `STRIPE_SECRET_KEY` | `PAYMENT_PROVIDER=stripe` (`sk_test_…` / `sk_live_…`) |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret (`whsec_…`) |
-| `TRYALLAPI_API_KEY` | `VIDEO_PROVIDER=tryallapi` ([console](https://tryallapi.com/console/token)) |
+| `YIR_API_KEY` | `VIDEO_PROVIDER=yir` ([yir.ai](https://yir.ai/?ref=ctc47abk)) |
+| `TRYALLAPI_API_KEY` | `VIDEO_PROVIDER`/`VIDEO_FALLBACK_PROVIDER=tryallapi` ([console](https://tryallapi.com/console/token)) |
 | `TRYALLAPI_BASE_URL` | Optional; default `https://tryallapi.com` |
 
 **Non-secret `vars`** in `wrangler.jsonc` (and staging config):
@@ -72,7 +73,8 @@ Waffo / Dodo / Stripe remain supported for payments; video is TryAllAPI (or mock
 | `PAYMENT_PROVIDER` | `stripe` |
 | `STRIPE_ENVIRONMENT` | `test` or `live` (match the secret key) |
 | `STRIPE_PRODUCTS` | JSON map of pack/plan id → Stripe **Price** id (`price_…`), e.g. `{"starter":"price_…","monthly":"price_…"}` |
-| `VIDEO_PROVIDER` | `tryallapi` |
+| `VIDEO_PROVIDER` | `yir` |
+| `VIDEO_FALLBACK_PROVIDER` | `tryallapi` |
 | `GOOGLE_CLIENT_ID` | Public OAuth client id |
 | `ADMIN_EMAILS` | Comma-separated admin emails |
 | `MODERATION_PROVIDER` | `openai` / `none` / `mock` (local) |
@@ -102,9 +104,9 @@ npm run dev -- --host 127.0.0.1      # http://127.0.0.1:3000
    - Set `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`.
 
 2. **TryAllAPI**  
-   - Create a key at https://tryallapi.com/console/token → `TRYALLAPI_API_KEY`.  
-   - Set `VIDEO_PROVIDER=tryallapi`. Adjust `site.video.tryallapi` (default model `doubao-seedance-2-0-fast-260128`).  
-   - Callback (when upstream supports `webhook_url`): `https://<domain>/api/webhooks/tryallapi` (results are always re-fetched with the API key).
+   - Create a yir key → `YIR_API_KEY`; create a TryAllAPI key at https://tryallapi.com/console/token → `TRYALLAPI_API_KEY`.  
+   - Set `VIDEO_PROVIDER=yir` and `VIDEO_FALLBACK_PROVIDER=tryallapi`. Adjust `site.video.yir` / `site.video.tryallapi`.  
+   - Callbacks: `https://<domain>/api/webhooks/yir` and `/api/webhooks/tryallapi` (results are always re-fetched with the API key).
 
 3. **Google OAuth** redirect: `https://<domain>/api/auth/google/callback`.
 
@@ -128,7 +130,7 @@ cp .dev.vars.example .dev.vars.production     # fill real values locally
 node scripts/sync-secrets.mjs                 # plan only; values never printed
 node scripts/sync-secrets.mjs --apply         # or: npx wrangler secret put <NAME>
 
-# Vars: PAYMENT_PROVIDER=stripe, VIDEO_PROVIDER=tryallapi, APP_ENV=production, SITE_URL, …
+# Vars: PAYMENT_PROVIDER=stripe, VIDEO_PROVIDER=yir, VIDEO_FALLBACK_PROVIDER=tryallapi, APP_ENV=production, SITE_URL, …
 npm run doctor                                # pre-deploy check (secret names only)
 npm run deploy                                # doctor + build + wrangler deploy
 ```
@@ -356,8 +358,9 @@ SMOKE_BASE_URL=https://video-template-staging.<subdomain>.workers.dev SMOKE_EXPE
 - **Cost and margin**: when a video is produced, the provider cost is stored in `generations.provider_cost_cents`: the actual charge when yir's bill is already settled, otherwise an estimate from the prices in `site.video`.
   - Jobs failed after a video was produced (timeout, failed by an admin) still record the cost; failures without a video don't. mock records 0.
   - The admin overview shows the last 30 days of provider cost, revenue from credits consumed and estimated gross margin; the generations list shows cost and margin per job. Revenue per credit = net revenue of paid USD orders ÷ credits not clawed back. The provider's invoice is the source of truth.
-- **Video providers**: `VIDEO_PROVIDER` picks `tryallapi` (default) or `mock` (local/e2e only; blocked in staging/production).
-  - [TryAllAPI](https://tryallapi.com/) is the production video backend. Set `VIDEO_PROVIDER=tryallapi` and the `TRYALLAPI_API_KEY` secret; model and pricing live in `site.video.tryallapi` (`src/server/video/tryallapi.ts`). Optional `TRYALLAPI_BASE_URL` (default `https://tryallapi.com`).
+- **Video providers**: `VIDEO_PROVIDER` picks `yir` (recommended), `tryallapi`, or `mock` (local/e2e only; blocked in staging/production). Optional `VIDEO_FALLBACK_PROVIDER=tryallapi` retries submit once on primary failure before a request id exists (no double billing); poll/webhooks use the provider stored on the generation row.
+  - [yir.ai](https://yir.ai/?ref=ctc47abk): set `VIDEO_PROVIDER=yir` and secret `YIR_API_KEY`; model in `site.video.yir` (`src/server/video/yir.ts`). Submit sends `Yir-Referral: ctc47abk`.
+  - [TryAllAPI](https://tryallapi.com/): primary or fallback. Secret `TRYALLAPI_API_KEY`; model in `site.video.tryallapi` (`src/server/video/tryallapi.ts`). Seedance/Doubao use `/api/v3/...`; other models use `/v1/video/generations`.
   - `mock` copies the template source video after a few seconds — for local dev and e2e only.
 
 

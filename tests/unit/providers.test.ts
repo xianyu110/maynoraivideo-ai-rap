@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { activePaymentProviderId } from '#/server/payments'
-import { activeVideoProviderId } from '#/server/video'
+import { activeVideoProviderId, videoFallbackProviderId } from '#/server/video'
 
 // mock 支付/生成在生产环境必须不可用，否则任何人都能免费充值
 describe('provider 选择', () => {
@@ -19,12 +19,19 @@ describe('provider 选择', () => {
     expect(() => activePaymentProviderId(env({ APP_ENV: 'development', PAYMENT_PROVIDER: 'creem' }))).toThrow()
   })
 
-  it('生产环境正常选择 waffo / dodo / stripe / tryallapi', () => {
+  it('生产环境正常选择 waffo / dodo / stripe / yir / tryallapi', () => {
     expect(activePaymentProviderId(env({ APP_ENV: 'production', PAYMENT_PROVIDER: 'waffo' }))).toBe('waffo')
     expect(activePaymentProviderId(env({ APP_ENV: 'production', PAYMENT_PROVIDER: 'dodo' }))).toBe('dodo')
     expect(activePaymentProviderId(env({ APP_ENV: 'production', PAYMENT_PROVIDER: 'stripe' }))).toBe('stripe')
     expect(activeVideoProviderId(env({ APP_ENV: 'production', VIDEO_PROVIDER: 'tryallapi' }))).toBe('tryallapi')
+    expect(activeVideoProviderId(env({ APP_ENV: 'production', VIDEO_PROVIDER: 'yir' }))).toBe('yir')
     expect(() => activeVideoProviderId(env({ APP_ENV: 'production', VIDEO_PROVIDER: 'fal' }))).toThrow(/VIDEO_PROVIDER/)
-    expect(() => activeVideoProviderId(env({ APP_ENV: 'production', VIDEO_PROVIDER: 'yir' }))).toThrow(/VIDEO_PROVIDER/)
+  })
+
+  it('VIDEO_FALLBACK_PROVIDER 与主服务商不同时才生效', () => {
+    const base = { APP_ENV: 'production', VIDEO_PROVIDER: 'yir', VIDEO_FALLBACK_PROVIDER: 'tryallapi' }
+    expect(videoFallbackProviderId(env(base))).toBe('tryallapi')
+    expect(videoFallbackProviderId(env({ ...base, VIDEO_FALLBACK_PROVIDER: 'yir' }))).toBeNull()
+    expect(videoFallbackProviderId(env({ ...base, VIDEO_FALLBACK_PROVIDER: '' }))).toBeNull()
   })
 })

@@ -21,7 +21,7 @@ interface TryAllTask {
   progress?: number
   video_url?: string
   url?: string
-  output?: { url?: string; video_url?: string } | string
+  output?: { url?: string; video_url?: string } | string | string[]
   content?: { video_url?: string; last_frame_url?: string }
   data?: {
     id?: string
@@ -292,11 +292,15 @@ function extractVideoUrl(task: TryAllTask): string | null {
   if (task.content && typeof task.content.video_url === 'string' && task.content.video_url) return task.content.video_url
   if (typeof task.video_url === 'string' && task.video_url) return task.video_url
   if (typeof task.url === 'string' && /\.(mp4|webm|mov)(\?|$)/i.test(task.url)) return task.url
-  if (task.output && typeof task.output === 'object') {
+  if (Array.isArray(task.output)) {
+    const first = task.output.find((item) => typeof item === 'string' && item.startsWith('http'))
+    if (typeof first === 'string') return first
+  } else if (task.output && typeof task.output === 'object') {
     if (typeof task.output.url === 'string' && task.output.url) return task.output.url
     if (typeof task.output.video_url === 'string' && task.output.video_url) return task.output.video_url
+  } else if (typeof task.output === 'string' && task.output.startsWith('http')) {
+    return task.output
   }
-  if (typeof task.output === 'string' && task.output.startsWith('http')) return task.output
   const data = task.data
   if (data) {
     if (data.content && typeof data.content.video_url === 'string' && data.content.video_url) return data.content.video_url

@@ -54,10 +54,27 @@ describe('checkConfig', () => {
       secrets: { DODO_API_KEY: 'd' },
     })
     expect(checkConfig(dodo)).toEqual([expect.objectContaining({ level: 'error', key: 'DODO_WEBHOOK_SECRET' })])
-    expect(keys(ready({ vars: { VIDEO_PROVIDER: 'yir' } }))).toEqual(['error:VIDEO_PROVIDER'])
+    expect(keys(ready({ vars: { VIDEO_PROVIDER: 'yir' } }))).toEqual(['error:YIR_API_KEY'])
+    expect(keys(ready({ vars: { VIDEO_PROVIDER: 'yir' }, secrets: { YIR_API_KEY: 'y' } }))).toEqual([])
     expect(keys(ready({ vars: { VIDEO_PROVIDER: 'fal' } }))).toEqual(['error:VIDEO_PROVIDER'])
     expect(keys(ready({ secrets: { TRYALLAPI_API_KEY: '' } }))).toEqual(['error:TRYALLAPI_API_KEY'])
     expect(keys(ready({ secrets: { TRYALLAPI_API_KEY: 't' } }))).toEqual([])
+    expect(
+      keys(
+        ready({
+          vars: { VIDEO_PROVIDER: 'yir', VIDEO_FALLBACK_PROVIDER: 'tryallapi' },
+          secrets: { YIR_API_KEY: 'y', TRYALLAPI_API_KEY: 't' },
+        }),
+      ),
+    ).toEqual([])
+    expect(
+      keys(
+        ready({
+          vars: { VIDEO_PROVIDER: 'yir', VIDEO_FALLBACK_PROVIDER: 'tryallapi' },
+          secrets: { YIR_API_KEY: 'y', TRYALLAPI_API_KEY: '' },
+        }),
+      ),
+    ).toEqual(['error:TRYALLAPI_API_KEY'])
     const stripe = ready({
       vars: { PAYMENT_PROVIDER: 'stripe', STRIPE_ENVIRONMENT: 'live', STRIPE_PRODUCTS: '{"starter":"price_1","party":"price_2"}' },
       secrets: { STRIPE_SECRET_KEY: 'sk' },
@@ -157,6 +174,8 @@ describe('doctor', () => {
     kv_namespaces: [{ binding: 'KV', id: '9f8e7d6c5b4a39281706f5e4d3c2b1a0' }],
     routes: [{ pattern: 'moonhop.ai', custom_domain: true }],
     workers_dev: false,
+    // wrangler.jsonc may keep empty crons on free plan; deployable production config still needs a cron
+    triggers: { crons: ['*/5 * * * *'] },
   })
   const allSecrets = Object.keys(ready().secrets)
   const doctorKeys = (config: Record<string, any>, options: Parameters<typeof runDoctor>[1] = {}) =>

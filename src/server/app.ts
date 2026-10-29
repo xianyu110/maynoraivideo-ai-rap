@@ -790,9 +790,9 @@ app.post('/api/webhooks/stripe', async (c) => {
   return c.json({ received: true, ...result })
 })
 
-// 视频服务商完成回调（tryallapi）：只当作“立即轮询”的信号，真实结果由 jobs.ts 用 API key 拉取，
+// 视频服务商完成回调（yir、tryallapi）：只当作“立即轮询”的信号，真实结果由 jobs.ts 用 API key 拉取，
 // 所以只校验地址里的任务 token，不验上游签名头
-for (const provider of ['tryallapi']) {
+for (const provider of ['yir', 'tryallapi']) {
   app.post(`/api/webhooks/${provider}`, async (c) => {
     const generationId = c.req.query('gen') ?? ''
     const token = c.req.query('token') ?? ''
